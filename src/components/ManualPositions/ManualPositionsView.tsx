@@ -144,22 +144,22 @@ const ManualPositionsView: React.FC = () => {
                     size="small"
                   />
                 </TableCell>
-                <TableCell align="right">{position.quantity}</TableCell>
-                <TableCell align="right">${position.entryPrice.toFixed(2)}</TableCell>
-                <TableCell align="right">${position.currentPrice.toFixed(2)}</TableCell>
-                <TableCell align="right">${position.value.toFixed(2)}</TableCell>
+                <TableCell align="right">{position.quantity || 0}</TableCell>
+                <TableCell align="right">${(position.entryPrice || 0).toFixed(2)}</TableCell>
+                <TableCell align="right">${(position.currentPrice || 0).toFixed(2)}</TableCell>
+                <TableCell align="right">${(position.value || 0).toFixed(2)}</TableCell>
                 <TableCell align="right">
                   <Typography
-                    color={position.pnl >= 0 ? 'success.main' : 'error.main'}
+                    color={(position.pnl || 0) >= 0 ? 'success.main' : 'error.main'}
                     fontWeight="bold"
                   >
-                    ${position.pnl.toFixed(2)}
+                    ${(position.pnl || 0).toFixed(2)}
                   </Typography>
                 </TableCell>
                 <TableCell align="center">
                   <Chip
-                    label={`${position.pnlPercent.toFixed(2)}%`}
-                    color={position.pnlPercent >= 0 ? 'success' : 'error'}
+                    label={`${(position.pnlPercent || 0).toFixed(2)}%`}
+                    color={(position.pnlPercent || 0) >= 0 ? 'success' : 'error'}
                     size="small"
                   />
                 </TableCell>
