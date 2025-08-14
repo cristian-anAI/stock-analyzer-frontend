@@ -1,5 +1,15 @@
 import axios from 'axios';
-import { Stock, Crypto, Position, ManualPosition } from '../types';
+import { 
+  Stock, 
+  Crypto, 
+  Position, 
+  ManualPosition, 
+  PortfolioOverview, 
+  PortfolioPositionsResponse, 
+  TransactionsResponse, 
+  PerformanceResponse, 
+  ComparisonAnalysis 
+} from '../types';
 import { cacheService, CACHE_KEYS } from './cache';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -299,6 +309,120 @@ export const healthService = {
       },
     });
     return response.data;
+  },
+};
+
+export const portfolioService = {
+  getOverview: async (): Promise<PortfolioOverview> => {
+    return cachedRequest(
+      'portfolio:overview',
+      async () => {
+        const response = await api.get('/portfolio/overview');
+        return response.data;
+      },
+      300000 // 5 minutes cache
+    );
+  },
+
+  getStockPositions: async (): Promise<PortfolioPositionsResponse> => {
+    return cachedRequest(
+      'portfolio:stocks:positions',
+      async () => {
+        const response = await api.get('/portfolio/stocks/positions');
+        return response.data;
+      },
+      300000 // 5 minutes cache
+    );
+  },
+
+  getCryptoPositions: async (): Promise<PortfolioPositionsResponse> => {
+    return cachedRequest(
+      'portfolio:crypto:positions',
+      async () => {
+        const response = await api.get('/portfolio/crypto/positions');
+        return response.data;
+      },
+      300000 // 5 minutes cache
+    );
+  },
+
+  getStockTransactions: async (limit?: number, symbol?: string): Promise<TransactionsResponse> => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (symbol) params.append('symbol', symbol);
+    
+    const cacheKey = `portfolio:stocks:transactions:${limit || 'all'}:${symbol || 'all'}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/portfolio/stocks/transactions?${params.toString()}`);
+        return response.data;
+      },
+      600000 // 10 minutes cache
+    );
+  },
+
+  getCryptoTransactions: async (limit?: number, symbol?: string): Promise<TransactionsResponse> => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (symbol) params.append('symbol', symbol);
+    
+    const cacheKey = `portfolio:crypto:transactions:${limit || 'all'}:${symbol || 'all'}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/portfolio/crypto/transactions?${params.toString()}`);
+        return response.data;
+      },
+      600000 // 10 minutes cache
+    );
+  },
+
+  getStockPerformance: async (days?: number): Promise<PerformanceResponse> => {
+    const params = days ? `?days=${days}` : '';
+    const cacheKey = `portfolio:stocks:performance:${days || 'default'}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/portfolio/stocks/performance${params}`);
+        return response.data;
+      },
+      600000 // 10 minutes cache
+    );
+  },
+
+  getCryptoPerformance: async (days?: number): Promise<PerformanceResponse> => {
+    const params = days ? `?days=${days}` : '';
+    const cacheKey = `portfolio:crypto:performance:${days || 'default'}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/portfolio/crypto/performance${params}`);
+        return response.data;
+      },
+      600000 // 10 minutes cache
+    );
+  },
+
+  getComparison: async (): Promise<ComparisonAnalysis> => {
+    return cachedRequest(
+      'portfolio:analytics:comparison',
+      async () => {
+        const response = await api.get('/portfolio/analytics/comparison');
+        return response.data;
+      },
+      300000 // 5 minutes cache
+    );
+  },
+
+  refreshPortfolio: async (): Promise<void> => {
+    // Invalidate all portfolio cache when refreshing
+    cacheService.invalidatePattern('portfolio:');
+    await api.post('/portfolio/refresh');
   },
 };
 
