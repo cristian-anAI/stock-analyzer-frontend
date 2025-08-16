@@ -21,6 +21,7 @@ import {
   CurrencyBitcoin as CryptoIcon,
   AccountBalance as PositionsIcon,
   Edit as ManualIcon,
+  History as TransactionsIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
 } from '@mui/icons-material';
@@ -42,6 +43,7 @@ const menuItems = [
   { text: 'Cryptos', path: '/cryptos', icon: <CryptoIcon /> },
   { text: 'Posiciones Autotrader', path: '/positions', icon: <PositionsIcon /> },
   { text: 'Posiciones Manuales', path: '/manual-positions', icon: <ManualIcon /> },
+  { text: 'Historial Transacciones', path: '/transactions', icon: <TransactionsIcon /> },
 ];
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {

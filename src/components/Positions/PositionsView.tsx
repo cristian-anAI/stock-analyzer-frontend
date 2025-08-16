@@ -25,7 +25,7 @@ import {
   PlayArrow as RunIcon,
   TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
-import { Position } from '../../types';
+import { Position, getPositionSideIcon, getPositionSideColor, getPositionSideLabel, getPnLColor, getPnLChipColor } from '../../types';
 import { positionService, autotraderService } from '../../services/api';
 import { usePolling } from '../../hooks/usePolling';
 
@@ -85,6 +85,7 @@ const PositionsView: React.FC = () => {
     enabled: !loading && !refreshing && !autotraderRunning
   });
 
+
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
@@ -128,6 +129,25 @@ const PositionsView: React.FC = () => {
   const stockPositions = positions.filter(p => p.type === 'stock');
   const cryptoPositions = positions.filter(p => p.type === 'crypto');
 
+  // Helper function to format prices with appropriate decimals
+  const formatPrice = (price: number, type: 'stock' | 'crypto'): string => {
+    if (type === 'crypto') {
+      // For crypto, use more decimals to show small price differences
+      if (price < 0.01) {
+        return price.toFixed(6); // For very small prices like SHIB
+      } else if (price < 1) {
+        return price.toFixed(4); // For prices like $0.23xx
+      } else if (price < 100) {
+        return price.toFixed(3); // For prices like $10.xxx
+      } else {
+        return price.toFixed(2); // For higher prices
+      }
+    } else {
+      // For stocks, 2 decimals is usually sufficient
+      return price.toFixed(2);
+    }
+  };
+
   const renderPositionsTable = (positions: Position[]) => (
     <TableContainer component={Paper}>
       <Table>
@@ -135,6 +155,7 @@ const PositionsView: React.FC = () => {
           <TableRow>
             <TableCell>Símbolo</TableCell>
             <TableCell>Nombre</TableCell>
+            <TableCell align="center">Side</TableCell>
             <TableCell align="right">Cantidad</TableCell>
             <TableCell align="right">Precio Entrada</TableCell>
             <TableCell align="right">Precio Actual</TableCell>
@@ -152,13 +173,21 @@ const PositionsView: React.FC = () => {
                 </Typography>
               </TableCell>
               <TableCell>{position.name}</TableCell>
+              <TableCell align="center">
+                <Chip
+                  label={`${getPositionSideIcon(position.positionSide)} ${getPositionSideLabel(position.positionSide)}`}
+                  color={getPositionSideColor(position.positionSide)}
+                  size="small"
+                  variant="outlined"
+                />
+              </TableCell>
               <TableCell align="right">{position.quantity || 0}</TableCell>
-              <TableCell align="right">${(position.entryPrice || 0).toFixed(2)}</TableCell>
-              <TableCell align="right">${(position.currentPrice || 0).toFixed(2)}</TableCell>
+              <TableCell align="right">${formatPrice(position.entryPrice || 0, position.type)}</TableCell>
+              <TableCell align="right">${formatPrice(position.currentPrice || 0, position.type)}</TableCell>
               <TableCell align="right">${(position.value || 0).toFixed(2)}</TableCell>
               <TableCell align="right">
                 <Typography
-                  color={(position.pnl || 0) >= 0 ? 'success.main' : 'error.main'}
+                  color={getPnLColor(position.pnl || 0, position.positionSide)}
                   fontWeight="bold"
                 >
                   ${(position.pnl || 0).toFixed(2)}
@@ -167,7 +196,7 @@ const PositionsView: React.FC = () => {
               <TableCell align="center">
                 <Chip
                   label={`${(position.pnlPercent || 0).toFixed(2)}%`}
-                  color={(position.pnlPercent || 0) >= 0 ? 'success' : 'error'}
+                  color={getPnLChipColor(position.pnlPercent || 0, position.positionSide)}
                   size="small"
                 />
               </TableCell>

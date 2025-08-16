@@ -8,7 +8,10 @@ import {
   PortfolioPositionsResponse, 
   TransactionsResponse, 
   PerformanceResponse, 
-  ComparisonAnalysis 
+  ComparisonAnalysis,
+  PositionAnalysis,
+  AlertConfig,
+  Alert
 } from '../types';
 import { cacheService, CACHE_KEYS } from './cache';
 
@@ -54,12 +57,12 @@ const mapStockData = (data: any): Stock => ({
   id: data.id,
   symbol: data.symbol,
   name: data.name,
-  currentPrice: data.current_price,
+  currentPrice: data.currentPrice || data.current_price,
   score: data.score,
   change: data.change,
-  changePercent: data.change_percent,
+  changePercent: data.changePercent || data.change_percent,
   volume: data.volume,
-  marketCap: data.market_cap,
+  marketCap: data.marketCap || data.market_cap,
   sector: data.sector,
 });
 
@@ -67,12 +70,12 @@ const mapCryptoData = (data: any): Crypto => ({
   id: data.id,
   symbol: data.symbol,
   name: data.name,
-  currentPrice: data.current_price,
+  currentPrice: data.currentPrice || data.current_price,
   score: data.score,
   change: data.change,
-  changePercent: data.change_percent,
+  changePercent: data.changePercent || data.change_percent,
   volume: data.volume,
-  marketCap: data.market_cap,
+  marketCap: data.marketCap || data.market_cap,
 });
 
 const mapPositionData = (data: any): Position => ({
@@ -87,6 +90,9 @@ const mapPositionData = (data: any): Position => ({
   pnl: data.pnl,
   pnlPercent: data.pnl_percent || data.pnlPercent,
   source: data.source,
+  positionSide: data.position_side || data.positionSide,
+  createdAt: data.created_at || data.createdAt,
+  updatedAt: data.updated_at || data.updatedAt,
 });
 
 const api = axios.create({
@@ -259,6 +265,17 @@ export const positionService = {
     cacheService.invalidatePattern('positions:');
     await api.post('/positions/refresh');
   },
+
+  getPositionAnalysis: async (symbol: string): Promise<PositionAnalysis> => {
+    return cachedRequest(
+      `position:analysis:${symbol}`,
+      async () => {
+        const response = await api.get(`/positions/analysis/${symbol}`);
+        return response.data;
+      },
+      300000 // 5 minutes cache
+    );
+  },
 };
 
 interface AutotraderSummary {
@@ -423,6 +440,58 @@ export const portfolioService = {
     // Invalidate all portfolio cache when refreshing
     cacheService.invalidatePattern('portfolio:');
     await api.post('/portfolio/refresh');
+  },
+};
+
+export const alertService = {
+  getAlerts: async (positionId?: string): Promise<Alert[]> => {
+    const params = positionId ? `?positionId=${positionId}` : '';
+    const cacheKey = `alerts:${positionId || 'all'}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/alerts${params}`);
+        return response.data;
+      },
+      60000 // 1 minute cache for alerts
+    );
+  },
+
+  createAlert: async (config: AlertConfig): Promise<Alert> => {
+    // Invalidate alerts cache when creating
+    cacheService.invalidatePattern('alerts:');
+    
+    const response = await api.post('/alerts', config);
+    return response.data;
+  },
+
+  updateAlert: async (id: string, config: Partial<AlertConfig>): Promise<Alert> => {
+    // Invalidate alerts cache when updating
+    cacheService.invalidatePattern('alerts:');
+    
+    const response = await api.put(`/alerts/${id}`, config);
+    return response.data;
+  },
+
+  deleteAlert: async (id: string): Promise<void> => {
+    // Invalidate alerts cache when deleting
+    cacheService.invalidatePattern('alerts:');
+    
+    await api.delete(`/alerts/${id}`);
+  },
+
+  dismissAlert: async (id: string): Promise<void> => {
+    // Invalidate alerts cache when dismissing
+    cacheService.invalidatePattern('alerts:');
+    
+    await api.patch(`/alerts/${id}/dismiss`);
+  },
+
+  checkAlerts: async (): Promise<Alert[]> => {
+    // Don't cache this as it's for real-time checking
+    const response = await api.get('/alerts/check');
+    return response.data;
   },
 };
 

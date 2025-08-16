@@ -8,6 +8,7 @@ import StocksView from './components/Stocks/StocksView';
 import CryptosView from './components/Cryptos/CryptosView';
 import PositionsView from './components/Positions/PositionsView';
 import ManualPositionsView from './components/ManualPositions/ManualPositionsView';
+import TransactionsView from './components/Transactions/TransactionsView';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
             <Route path="/cryptos" element={<CryptosView />} />
             <Route path="/positions" element={<PositionsView />} />
             <Route path="/manual-positions" element={<ManualPositionsView />} />
+            <Route path="/transactions" element={<TransactionsView />} />
           </Routes>
         </Layout>
       </Router>

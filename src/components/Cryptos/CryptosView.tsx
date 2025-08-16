@@ -78,8 +78,8 @@ const CryptosView: React.FC = () => {
           bValue = b.symbol;
           break;
         case 'price':
-          aValue = ((a.currentPrice && a.currentPrice > 0) ? a.currentPrice : (a.change || 0));
-          bValue = ((b.currentPrice && b.currentPrice > 0) ? b.currentPrice : (b.change || 0));
+          aValue = a.currentPrice || 0;
+          bValue = b.currentPrice || 0;
           break;
         case 'change':
           aValue = a.changePercent || 0;
@@ -305,7 +305,7 @@ const CryptosView: React.FC = () => {
                   </Box>
                 </TableCell>
                 <TableCell align="right">
-                  ${((crypto.currentPrice && crypto.currentPrice > 0) ? crypto.currentPrice : (crypto.change || 0)).toFixed(6)}
+                  ${(crypto.currentPrice || 0).toFixed(6)}
                 </TableCell>
                 <TableCell align="right">
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'flex-end' }}>

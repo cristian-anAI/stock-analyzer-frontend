@@ -5,6 +5,7 @@
       "Bash(npm start)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "defaultMode": "acceptEdits"
   }
 }
