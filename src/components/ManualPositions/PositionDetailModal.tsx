@@ -411,7 +411,7 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
                 <Typography variant="h6" gutterBottom>News Sentiment</Typography>
                 <Box display="flex" alignItems="center" gap={2}>
                   <Typography variant="h3">
-                    {fundamentalData.newsSentiment > 0.5 ? '😊' : fundamentalData.newsSentiment > 0 ? '😐' : '😟'}
+                    {fundamentalData.newsSentiment > 0.5 ? '+' : fundamentalData.newsSentiment > 0 ? '=' : '-'}
                   </Typography>
                   <Box>
                     <Typography variant="h6">

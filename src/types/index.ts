@@ -56,10 +56,10 @@ export interface ManualPosition {
 export type ScoreColor = 'error' | 'warning' | 'info' | 'success';
 
 export const getScoreColor = (score: number): ScoreColor => {
-  if (score >= 8) return 'success';   // 🟢 Strong Buy (8.0-10.0)
-  if (score >= 6) return 'info';      // 🔵 Buy (6.0-7.9)
-  if (score >= 4) return 'warning';   // 🟡 Hold (4.0-5.9)
-  return 'error';                     // 🔴 Sell (<4.0)
+  if (score >= 8) return 'success';   // Strong Buy (8.0-10.0)
+  if (score >= 6) return 'info';      // Buy (6.0-7.9)
+  if (score >= 4) return 'warning';   // Hold (4.0-5.9)
+  return 'error';                     // Sell (<4.0)
 };
 
 export const getScoreLabel = (score: number): string => {
@@ -78,8 +78,8 @@ export const getScoreDescription = (score: number): string => {
 
 // Position Side helpers
 export const getPositionSideIcon = (positionSide?: 'LONG' | 'SHORT'): string => {
-  if (positionSide === 'SHORT') return '📉';
-  return '📈';
+  if (positionSide === 'SHORT') return '↓';
+  return '↑';
 };
 
 export const getPositionSideColor = (positionSide?: 'LONG' | 'SHORT'): 'success' | 'error' | 'info' => {

@@ -156,7 +156,7 @@ const PortfolioSummaryCards: React.FC<PortfolioSummaryCardsProps> = ({ overview 
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                📈 Stocks Portfolio
+                Stocks Portfolio
               </Typography>
               <Box display="flex" justifyContent="space-between" mb={2}>
                 <Typography color="textSecondary">Capital Inicial:</Typography>
@@ -199,7 +199,7 @@ const PortfolioSummaryCards: React.FC<PortfolioSummaryCardsProps> = ({ overview 
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                ₿ Crypto Portfolio
+                Crypto Portfolio
               </Typography>
               <Box display="flex" justifyContent="space-between" mb={2}>
                 <Typography color="textSecondary">Capital Inicial:</Typography>

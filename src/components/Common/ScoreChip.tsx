@@ -23,16 +23,16 @@ const ScoreChip: React.FC<ScoreChipProps> = ({
   const description = getScoreDescription(score);
 
   const getScoreEmoji = (score: number) => {
-    if (score >= 8) return '🟢';
-    if (score >= 6) return '🔵';
-    if (score >= 4) return '🟡';
-    return '🔴';
+    if (score >= 8) return 'Strong Buy';
+    if (score >= 6) return 'Buy';
+    if (score >= 4) return 'Hold';
+    return 'Sell';
   };
 
   const tooltipContent = (
     <Box>
       <Typography variant="body2" fontWeight="bold">
-        {getScoreEmoji(score)} {label} ({score.toFixed(1)}/10)
+        {label} ({score.toFixed(1)}/10)
       </Typography>
       <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}>
         {description}
