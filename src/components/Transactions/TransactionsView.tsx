@@ -33,7 +33,6 @@ import {
   TrendingUp,
   TrendingDown,
   Info as InfoIcon,
-  FilterList as FilterIcon,
   GetApp as ExportIcon,
 } from '@mui/icons-material';
 import { Transaction } from '../../types';
@@ -73,7 +72,7 @@ const TransactionsView: React.FC = () => {
   
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
-  const [actionFilter, setActionFilter] = useState<'all' | 'buy' | 'sell'>('all');
+  const [actionFilter, setActionFilter] = useState<'all' | 'buy' | 'sell' | 'short' | 'cover' | 'entries' | 'exits' | 'long' | 'short_only'>('all');
   const [sortBy, setSortBy] = useState<'timestamp' | 'symbol' | 'amount' | 'score'>('timestamp');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
@@ -147,8 +146,24 @@ const TransactionsView: React.FC = () => {
       );
     }
 
+    // Apply action filter
     if (actionFilter !== 'all') {
-      transactions = transactions.filter(t => t.action === actionFilter);
+      switch (actionFilter) {
+        case 'entries':
+          transactions = transactions.filter(t => ['buy', 'short'].includes(t.action));
+          break;
+        case 'exits':
+          transactions = transactions.filter(t => ['sell', 'cover'].includes(t.action));
+          break;
+        case 'long':
+          transactions = transactions.filter(t => ['buy', 'sell'].includes(t.action));
+          break;
+        case 'short_only':
+          transactions = transactions.filter(t => ['short', 'cover'].includes(t.action));
+          break;
+        default:
+          transactions = transactions.filter(t => t.action === actionFilter);
+      }
     }
 
     // Sort
@@ -205,8 +220,64 @@ const TransactionsView: React.FC = () => {
     });
   };
 
-  const getActionChipColor = (action: string): 'success' | 'error' => {
-    return action === 'buy' ? 'success' : 'error';
+  const getDisplayAction = (transaction: Transaction): string => {
+    switch (transaction.action) {
+      case 'short':
+        return 'SHORT ENTRY';
+      case 'cover':
+        return 'SHORT EXIT';
+      case 'buy':
+        return 'LONG ENTRY';
+      case 'sell':
+        return 'LONG EXIT';
+      default:
+        return String(transaction.action).toUpperCase();
+    }
+  };
+
+  const getActionColor = (action: string): 'success' | 'error' | 'warning' | 'info' => {
+    switch (action) {
+      case 'buy':
+        return 'success';  // Verde para LONG entry
+      case 'sell':
+        return 'error';    // Rojo para LONG exit
+      case 'short':
+        return 'warning';  // Naranja para SHORT entry
+      case 'cover':
+        return 'info';     // Azul para SHORT exit
+      default:
+        return 'success';
+    }
+  };
+
+  const getActionIcon = (action: string) => {
+    switch (action) {
+      case 'buy':
+        return <TrendingUp />;
+      case 'sell':
+        return <TrendingDown />;
+      case 'short':
+        return <TrendingDown style={{ color: 'orange' }} />;
+      case 'cover':
+        return <TrendingUp style={{ color: 'blue' }} />;
+      default:
+        return <TrendingUp />;
+    }
+  };
+
+  const getActionTooltip = (action: string): string => {
+    switch (action) {
+      case 'short':
+        return 'Posición SHORT abierta - Ganancia si el precio baja';
+      case 'cover':
+        return 'Posición SHORT cerrada - Realizando P&L';
+      case 'buy':
+        return 'Posición LONG abierta - Ganancia si el precio sube';
+      case 'sell':
+        return 'Posición LONG cerrada - Realizando P&L';
+      default:
+        return 'Transacción';
+    }
   };
 
   const getScoreColor = (score: number): 'success' | 'warning' | 'error' | 'info' => {
@@ -266,12 +337,15 @@ const TransactionsView: React.FC = () => {
                 </Typography>
               </TableCell>
               <TableCell align="center">
-                <Chip
-                  label={transaction.action.toUpperCase()}
-                  color={getActionChipColor(transaction.action)}
-                  size="small"
-                  icon={transaction.action === 'buy' ? <TrendingUp /> : <TrendingDown />}
-                />
+                <Tooltip title={getActionTooltip(transaction.action)} arrow>
+                  <Chip
+                    label={getDisplayAction(transaction)}
+                    color={getActionColor(transaction.action)}
+                    size="small"
+                    icon={getActionIcon(transaction.action)}
+                    variant="outlined"
+                  />
+                </Tooltip>
               </TableCell>
               <TableCell align="right">
                 <Typography variant="body2">
@@ -399,10 +473,14 @@ const TransactionsView: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" color="success.main">
-                {currentTransactions.filter(t => t.action === 'buy').length}
+                {currentTransactions.filter(t => ['buy', 'short'].includes(t.action)).length}
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                Compras
+                Aperturas
+              </Typography>
+              <Typography variant="caption" display="block">
+                LONG: {currentTransactions.filter(t => t.action === 'buy').length} | 
+                SHORT: {currentTransactions.filter(t => t.action === 'short').length}
               </Typography>
             </CardContent>
           </Card>
@@ -411,10 +489,14 @@ const TransactionsView: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" color="error.main">
-                {currentTransactions.filter(t => t.action === 'sell').length}
+                {currentTransactions.filter(t => ['sell', 'cover'].includes(t.action)).length}
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                Ventas
+                Cierres
+              </Typography>
+              <Typography variant="caption" display="block">
+                LONG: {currentTransactions.filter(t => t.action === 'sell').length} | 
+                SHORT: {currentTransactions.filter(t => t.action === 'cover').length}
               </Typography>
             </CardContent>
           </Card>
@@ -427,6 +509,21 @@ const TransactionsView: React.FC = () => {
               </Typography>
               <Typography variant="body2" color="textSecondary">
                 Volumen Total
+              </Typography>
+            </CardContent>
+          </Card>
+        </Box>
+        <Box flex="1" minWidth="200px">
+          <Card>
+            <CardContent>
+              <Typography variant="h6" color="primary.main">
+                {Math.round((currentTransactions.filter(t => ['short', 'cover'].includes(t.action)).length / Math.max(currentTransactions.length, 1)) * 100)}%
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Estrategia SHORT
+              </Typography>
+              <Typography variant="caption" display="block">
+                {currentTransactions.filter(t => ['short', 'cover'].includes(t.action)).length} de {currentTransactions.length} transacciones
               </Typography>
             </CardContent>
           </Card>
@@ -448,11 +545,17 @@ const TransactionsView: React.FC = () => {
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value as any)}
           size="small"
-          sx={{ minWidth: 120 }}
+          sx={{ minWidth: 150 }}
         >
           <MenuItem value="all">Todas</MenuItem>
+          <MenuItem value="entries">Solo Aperturas</MenuItem>
+          <MenuItem value="exits">Solo Cierres</MenuItem>
+          <MenuItem value="long">Solo LONG</MenuItem>
+          <MenuItem value="short_only">Solo SHORT</MenuItem>
           <MenuItem value="buy">Compras</MenuItem>
           <MenuItem value="sell">Ventas</MenuItem>
+          <MenuItem value="short">SHORT Entry</MenuItem>
+          <MenuItem value="cover">SHORT Exit</MenuItem>
         </TextField>
         <TextField
           select
@@ -526,7 +629,16 @@ const TransactionsView: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          Detalles de Transacción - {selectedTransaction?.symbol}
+          {selectedTransaction && (
+            <Box>
+              <Typography variant="h6">
+                {getDisplayAction(selectedTransaction)} - {selectedTransaction.symbol}
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                {getActionTooltip(selectedTransaction.action)}
+              </Typography>
+            </Box>
+          )}
         </DialogTitle>
         <DialogContent>
           {selectedTransaction && (
@@ -539,10 +651,11 @@ const TransactionsView: React.FC = () => {
                   <Typography><strong>Símbolo:</strong> {selectedTransaction.symbol}</Typography>
                   <Typography><strong>Acción:</strong> 
                     <Chip 
-                      label={selectedTransaction.action.toUpperCase()} 
-                      color={getActionChipColor(selectedTransaction.action)}
+                      label={getDisplayAction(selectedTransaction)} 
+                      color={getActionColor(selectedTransaction.action)}
                       size="small"
                       sx={{ ml: 1 }}
+                      icon={getActionIcon(selectedTransaction.action)}
                     />
                   </Typography>
                 </Box>
@@ -566,6 +679,11 @@ const TransactionsView: React.FC = () => {
                       size="small"
                       sx={{ ml: 1 }}
                     />
+                    <Typography variant="caption" display="block" sx={{ ml: 1, mt: 0.5 }}>
+                      {selectedTransaction.action === 'short' || selectedTransaction.action === 'cover' 
+                        ? 'Score bajo ideal para SHORT (< 4.0)'
+                        : 'Score alto ideal para LONG (> 6.0)'}
+                    </Typography>
                   </Typography>
                 )}
               </Box>
@@ -574,7 +692,7 @@ const TransactionsView: React.FC = () => {
                 Razón de la Transacción
               </Typography>
               <Paper elevation={1} sx={{ p: 2, bgcolor: 'grey.50' }}>
-                <Typography variant="body1">
+                <Typography variant="body1" color="text.primary">
                   {selectedTransaction.reason}
                 </Typography>
               </Paper>

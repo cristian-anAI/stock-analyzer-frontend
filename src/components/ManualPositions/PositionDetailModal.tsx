@@ -15,7 +15,6 @@ import {
   IconButton,
   CircularProgress,
   LinearProgress,
-  Divider,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -31,6 +30,44 @@ import {
 import { ManualPosition, PositionAnalysis } from '../../types';
 import PositionAlertsManager from './PositionAlertsManager';
 import PositionCharts from './PositionCharts';
+import { positionService } from '../../services/api';
+
+interface RealAnalysisData {
+  symbol: string;
+  current_price: number;
+  entry_price: number;
+  quantity: number;
+  unrealized_pnl: number;
+  unrealized_pnl_percent: number;
+  technical_indicators: {
+    rsi: number;
+    macd: number;
+    macd_signal: string;
+    ma_20: number;
+    ma_50: number;
+    ma_200: number;
+    bollinger_upper: number;
+    bollinger_lower: number;
+  };
+  exit_strategies: {
+    stop_loss: number;
+    take_profit: number;
+    partial_profit: number;
+    trailing_stop: number;
+  };
+  risk_metrics: {
+    risk_reward_ratio: number;
+    position_size_percent: number;
+    days_held: number;
+    volatility: number;
+  };
+  recommendation: {
+    action: string;
+    confidence: number;
+    reasons: string[];
+  };
+  analysis_timestamp: string;
+}
 
 interface PositionDetailModalProps {
   position: ManualPosition;
@@ -75,11 +112,40 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
 }) => {
   const [tabValue, setTabValue] = useState(0);
   const [alertsManagerOpen, setAlertsManagerOpen] = useState(false);
+  const [realAnalysisData, setRealAnalysisData] = useState<RealAnalysisData | null>(null);
+  const [realDataLoading, setRealDataLoading] = useState(false);
 
-  // Use real analysis data or fallback to mock data
-  const currentPrice = analysisData?.technical?.movingAverages?.currentPrice || 150.25;
-  const mockPnL = (position.quantity * currentPrice) - (position.quantity * position.entryPrice);
-  const mockPnLPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
+  // Fetch real analysis data when modal opens
+  React.useEffect(() => {
+    if (open && position.symbol) {
+      fetchRealAnalysisData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, position.symbol]);
+
+  const fetchRealAnalysisData = async () => {
+    try {
+      setRealDataLoading(true);
+      const [technicalData, fundamentalData] = await Promise.all([
+        positionService.getManualPositionAnalysis(position.symbol),
+        positionService.getPositionAnalysis(position.symbol)
+      ]);
+      
+      setRealAnalysisData(technicalData);
+      console.log('Real technical data:', technicalData);
+      console.log('Fundamental data (mock):', fundamentalData);
+    } catch (error) {
+      console.error('Error fetching real analysis data:', error);
+    } finally {
+      setRealDataLoading(false);
+    }
+  };
+
+  // Use real data when available, fallback to mock
+  const currentPrice = realAnalysisData?.current_price || analysisData?.technical?.movingAverages?.currentPrice || 150.25;
+  const actualPnL = realAnalysisData?.unrealized_pnl || ((position.quantity * currentPrice) - (position.quantity * position.entryPrice));
+  const actualPnLPercent = realAnalysisData?.unrealized_pnl_percent || (((currentPrice - position.entryPrice) / position.entryPrice) * 100);
+  const lastUpdated = realAnalysisData?.analysis_timestamp || analysisData?.lastUpdated || new Date().toISOString();
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -100,16 +166,35 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
     }
   };
 
-  // Use real technical data or fallback to mock data
-  const technicalData = analysisData?.technical || {
+  // Use real technical data when available
+  const technicalData = realAnalysisData?.technical_indicators ? {
+    rsi: realAnalysisData.technical_indicators.rsi,
+    macd: { 
+      value: realAnalysisData.technical_indicators.macd, 
+      signal: realAnalysisData.technical_indicators.macd_signal as any, 
+      histogram: 0.5 
+    },
+    bollinger: { 
+      position: currentPrice > realAnalysisData.technical_indicators.bollinger_upper ? 'upper_band' as const : 'middle' as const, 
+      percentage: 78, 
+      squeeze: false 
+    },
+    volume: { status: 'above_average' as const, percentage: 125, trend: 'increasing' as const },
+    movingAverages: { 
+      ma20: realAnalysisData.technical_indicators.ma_20, 
+      ma50: realAnalysisData.technical_indicators.ma_50, 
+      ma200: realAnalysisData.technical_indicators.ma_200, 
+      currentPrice 
+    },
+  } : (analysisData?.technical || {
     rsi: 65,
     macd: { value: 2.5, signal: 'bullish' as const, histogram: 0.5 },
     bollinger: { position: 'upper_band' as const, percentage: 78, squeeze: false },
     volume: { status: 'above_average' as const, percentage: 125, trend: 'increasing' as const },
     movingAverages: { ma20: 148.50, ma50: 145.30, ma200: 140.00, currentPrice },
-  };
+  });
 
-  const recommendation = analysisData?.recommendation || 'STRONG_HOLD';
+  const recommendation = realAnalysisData?.recommendation?.action || analysisData?.recommendation || 'STRONG_HOLD';
 
   // Use real fundamental data or fallback to mock data
   const fundamentalData = analysisData?.fundamental || {
@@ -122,11 +207,27 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
     recentAlerts: [],
   };
 
-  const exitStrategies = analysisData?.exitStrategies || {
+  const exitStrategies = realAnalysisData?.exit_strategies ? {
+    stopLoss: { 
+      price: realAnalysisData.exit_strategies.stop_loss, 
+      distance: ((position.entryPrice - realAnalysisData.exit_strategies.stop_loss) / position.entryPrice) * 100, 
+      reason: 'Technical support level' 
+    },
+    takeProfit: { 
+      price: realAnalysisData.exit_strategies.take_profit, 
+      upside: ((realAnalysisData.exit_strategies.take_profit - position.entryPrice) / position.entryPrice) * 100, 
+      confidence: realAnalysisData.recommendation?.confidence || 85 
+    },
+    partialProfit: { 
+      price: realAnalysisData.exit_strategies.partial_profit, 
+      percentage: 50, 
+      action: 'Reduce position size' 
+    },
+  } : (analysisData?.exitStrategies || {
     stopLoss: { price: position.entryPrice * 0.95, distance: 5.0, reason: 'Technical support level' },
     takeProfit: { price: position.entryPrice * 1.15, upside: 15.0, confidence: 85 },
     partialProfit: { price: position.entryPrice * 1.08, percentage: 50, action: 'Reduce position size' },
-  };
+  });
 
   return (
     <>
@@ -150,17 +251,20 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
             </Typography>
             <Box display="flex" alignItems="center" gap={2} mt={1}>
               <Chip
-                label={`${mockPnL >= 0 ? '+' : ''}$${mockPnL.toFixed(2)}`}
-                color={mockPnL >= 0 ? 'success' : 'error'}
+                label={`${actualPnL >= 0 ? '+' : ''}$${actualPnL.toFixed(2)}`}
+                color={actualPnL >= 0 ? 'success' : 'error'}
                 variant="filled"
               />
               <Chip
-                label={`${mockPnLPercent >= 0 ? '+' : ''}${mockPnLPercent.toFixed(2)}%`}
-                color={mockPnLPercent >= 0 ? 'success' : 'error'}
+                label={`${actualPnLPercent >= 0 ? '+' : ''}${actualPnLPercent.toFixed(2)}%`}
+                color={actualPnLPercent >= 0 ? 'success' : 'error'}
                 variant="outlined"
               />
               <Typography variant="caption" color="text.secondary">
-                Actualizado: {analysisData?.lastUpdated ? new Date(analysisData.lastUpdated).toLocaleString() : new Date().toLocaleString()}
+                Actualizado: {new Date(lastUpdated).toLocaleString()}
+                {realAnalysisData && (
+                  <Chip label="Datos Reales" color="success" size="small" sx={{ ml: 1 }} />
+                )}
               </Typography>
             </Box>
           </Box>
@@ -171,9 +275,14 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
       </DialogTitle>
 
       <DialogContent dividers>
-        {loading ? (
+        {(loading || realDataLoading) ? (
           <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-            <CircularProgress />
+            <Box textAlign="center">
+              <CircularProgress />
+              <Typography variant="body2" sx={{ mt: 2 }}>
+                {realDataLoading ? 'Cargando análisis real...' : 'Cargando...'}
+              </Typography>
+            </Box>
           </Box>
         ) : (
           <>
@@ -188,13 +297,29 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
 
         <TabPanel value={tabValue} index={0}>
           <Box display="flex" flexDirection="column" gap={3}>
-            <Box>
+            <Box display="flex" alignItems="center" gap={2}>
               <Chip
                 label={recommendation.replace('_', ' ')}
                 color={getRecommendationColor(recommendation)}
                 variant="filled"
                 size="medium"
               />
+              {realAnalysisData && (
+                <Chip 
+                  label="Datos Reales" 
+                  color="success" 
+                  size="small" 
+                  variant="outlined"
+                />
+              )}
+              {!realAnalysisData && (
+                <Chip 
+                  label="Datos Mock" 
+                  color="warning" 
+                  size="small" 
+                  variant="outlined"
+                />
+              )}
             </Box>
 
             <Box display="flex" gap={2} flexWrap="wrap">
@@ -406,6 +531,18 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
 
         <TabPanel value={tabValue} index={2}>
           <Box display="flex" flexDirection="column" gap={3}>
+            <Box display="flex" alignItems="center" gap={2} mb={2}>
+              <Typography variant="h6">Contexto Fundamental</Typography>
+              <Chip 
+                label="En Desarrollo" 
+                color="warning" 
+                size="small" 
+                variant="outlined"
+              />
+              <Typography variant="caption" color="text.secondary">
+                Los datos mostrados son de prueba. Integración con APIs reales en progreso.
+              </Typography>
+            </Box>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>News Sentiment</Typography>
@@ -432,6 +569,7 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
                   <WarningIcon color="warning" />
                   <Box>
                     <Typography variant="h6">Earnings Proximity</Typography>
+                    <Chip label="Mock Data" color="warning" size="small" sx={{ ml: 1 }} />
                     <Typography variant="body2">
                       Próximos resultados: {fundamentalData.earningsDate}
                     </Typography>
@@ -465,21 +603,30 @@ const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
                 <Typography variant="h6" gutterBottom>Recent Alerts</Typography>
                 <Box display="flex" flexDirection="column" gap={2}>
                   {fundamentalData.recentAlerts.length > 0 ? (
-                    fundamentalData.recentAlerts.map((alert, index) => (
-                      <Box key={index} display="flex" alignItems="center" gap={2}>
-                        <ScheduleIcon color="action" fontSize="small" />
-                        <Box>
-                          <Typography variant="body2">{alert.message}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {new Date(alert.triggeredAt || '').toLocaleDateString()}
-                          </Typography>
+                    fundamentalData.recentAlerts.map((alert, index) => {
+                      const alertDate = alert.triggeredAt ? new Date(alert.triggeredAt) : new Date();
+                      const isValidDate = !isNaN(alertDate.getTime());
+                      
+                      return (
+                        <Box key={index} display="flex" alignItems="center" gap={2}>
+                          <ScheduleIcon color="action" fontSize="small" />
+                          <Box>
+                            <Typography variant="body2">{alert.message}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {isValidDate ? alertDate.toLocaleDateString('es-ES') : 'Fecha no disponible'}
+                              <Chip label="Mock" color="warning" size="small" sx={{ ml: 1 }} />
+                            </Typography>
+                          </Box>
                         </Box>
-                      </Box>
-                    ))
+                      );
+                    })
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      No recent alerts
-                    </Typography>
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <Typography variant="body2" color="text.secondary">
+                        No recent alerts
+                      </Typography>
+                      <Chip label="Sistema en desarrollo" color="info" size="small" />
+                    </Box>
                   )}
                 </Box>
               </CardContent>

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
-  Grid,
   Card,
   CardContent,
   Chip,
@@ -23,10 +22,9 @@ import {
 import {
   Refresh as RefreshIcon,
   PlayArrow as RunIcon,
-  TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
-import { Position, getPositionSideIcon, getPositionSideColor, getPositionSideLabel, getPnLColor, getPnLChipColor } from '../../types';
-import { positionService, autotraderService } from '../../services/api';
+import { Position, getPositionSideIcon, getPositionSideColor, getPositionSideLabel, getPnLColor, getPnLChipColor, PortfolioPositionsResponse } from '../../types';
+import { positionService, autotraderService, portfolioService } from '../../services/api';
 import { usePolling } from '../../hooks/usePolling';
 
 interface TabPanelProps {
@@ -60,13 +58,26 @@ const PositionsView: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  
+  // Portfolio summary states by asset type
+  const [stockPortfolioData, setStockPortfolioData] = useState<PortfolioPositionsResponse | null>(null);
+  const [cryptoPortfolioData, setCryptoPortfolioData] = useState<PortfolioPositionsResponse | null>(null);
 
   const fetchPositions = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await positionService.getAutotraderPositions();
-      setPositions(data);
+      
+      // Fetch both autotrader positions and portfolio data in parallel
+      const [autotraderData, stockData, cryptoData] = await Promise.all([
+        positionService.getAutotraderPositions(),
+        portfolioService.getStockPositions(),
+        portfolioService.getCryptoPositions()
+      ]);
+      
+      setPositions(autotraderData);
+      setStockPortfolioData(stockData);
+      setCryptoPortfolioData(cryptoData);
     } catch (err) {
       setError('Error al cargar las posiciones');
       console.error('Error fetching positions:', err);
@@ -89,9 +100,13 @@ const PositionsView: React.FC = () => {
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      await positionService.refreshPositions();
+      // Refresh both position and portfolio data
+      await Promise.all([
+        positionService.refreshPositions(),
+        portfolioService.refreshPortfolio()
+      ]);
       await fetchPositions();
-      setSnackbarMessage('Posiciones actualizadas correctamente');
+      setSnackbarMessage('Posiciones y portfolio actualizados correctamente');
       setSnackbarOpen(true);
     } catch (err) {
       setError('Error al actualizar las posiciones');
@@ -128,6 +143,37 @@ const PositionsView: React.FC = () => {
 
   const stockPositions = positions.filter(p => p.type === 'stock');
   const cryptoPositions = positions.filter(p => p.type === 'crypto');
+
+  // Function to get current tab summary data
+  const getCurrentTabSummary = () => {
+    if (tabValue === 0) {
+      // Stocks tab
+      return {
+        totalValue: stockPortfolioData?.summary?.total_current_value || 0,
+        totalInvested: stockPortfolioData?.summary?.total_invested || 0,
+        totalPnL: stockPortfolioData?.summary?.total_unrealized_pnl || 0,
+        totalPnLPercent: stockPortfolioData?.summary?.total_invested 
+          ? ((stockPortfolioData.summary.total_unrealized_pnl || 0) / stockPortfolioData.summary.total_invested) * 100 
+          : 0,
+        assetType: 'stocks' as const,
+        positionCount: stockPortfolioData?.summary?.total_positions || 0
+      };
+    } else {
+      // Crypto tab
+      return {
+        totalValue: cryptoPortfolioData?.summary?.total_current_value || 0,
+        totalInvested: cryptoPortfolioData?.summary?.total_invested || 0,
+        totalPnL: cryptoPortfolioData?.summary?.total_unrealized_pnl || 0,
+        totalPnLPercent: cryptoPortfolioData?.summary?.total_invested 
+          ? ((cryptoPortfolioData.summary.total_unrealized_pnl || 0) / cryptoPortfolioData.summary.total_invested) * 100 
+          : 0,
+        assetType: 'crypto' as const,
+        positionCount: cryptoPortfolioData?.summary?.total_positions || 0
+      };
+    }
+  };
+
+  const currentTabSummary = getCurrentTabSummary();
 
   // Helper function to format prices with appropriate decimals
   const formatPrice = (price: number, type: 'stock' | 'crypto'): string => {
@@ -223,9 +269,8 @@ const PositionsView: React.FC = () => {
     );
   }
 
-  const totalValue = positions.reduce((sum, pos) => sum + (pos.value || 0), 0);
-  const totalPnL = positions.reduce((sum, pos) => sum + (pos.pnl || 0), 0);
-  const totalPnLPercent = totalValue > 0 ? (totalPnL / (totalValue - totalPnL)) * 100 : 0;
+  // Use current tab summary instead of aggregated data
+  const { totalValue, totalPnL, totalPnLPercent, assetType } = currentTabSummary;
 
   return (
     <Box>
@@ -259,10 +304,13 @@ const PositionsView: React.FC = () => {
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                Valor Total del Portfolio
+                Valor Total - {assetType === 'stocks' ? 'Stocks' : 'Crypto'}
               </Typography>
               <Typography variant="h5">
                 ${totalValue.toFixed(2)}
+              </Typography>
+              <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                {currentTabSummary.positionCount} posiciones activas
               </Typography>
             </CardContent>
           </Card>
@@ -271,7 +319,7 @@ const PositionsView: React.FC = () => {
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                P&L Total
+                P&L - {assetType === 'stocks' ? 'Stocks' : 'Crypto'}
               </Typography>
               <Typography
                 variant="h5"
@@ -279,6 +327,12 @@ const PositionsView: React.FC = () => {
               >
                 ${totalPnL.toFixed(2)}
               </Typography>
+              <Chip
+                label={`${totalPnLPercent >= 0 ? '+' : ''}${totalPnLPercent.toFixed(2)}%`}
+                color={totalPnLPercent >= 0 ? 'success' : 'error'}
+                size="small"
+                sx={{ mt: 1 }}
+              />
             </CardContent>
           </Card>
         </Box>
@@ -286,13 +340,17 @@ const PositionsView: React.FC = () => {
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                P&L Total %
+                Capital Invertido - {assetType === 'stocks' ? 'Stocks' : 'Crypto'}
               </Typography>
-              <Typography
-                variant="h5"
-                color={totalPnLPercent >= 0 ? 'success.main' : 'error.main'}
-              >
-                {totalPnLPercent.toFixed(2)}%
+              <Typography variant="h5">
+                ${currentTabSummary.totalInvested.toFixed(2)}
+              </Typography>
+              <Typography variant="body2" color="info.main" sx={{ mt: 1 }}>
+                Cash disponible para {assetType}: ${(
+                  assetType === 'stocks' 
+                    ? (stockPortfolioData?.summary ? (stockPortfolioData.summary.total_current_value - stockPortfolioData.summary.total_invested) : 0)
+                    : (cryptoPortfolioData?.summary ? (cryptoPortfolioData.summary.total_current_value - cryptoPortfolioData.summary.total_invested) : 0)
+                ).toFixed(2)}
               </Typography>
             </CardContent>
           </Card>

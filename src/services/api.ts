@@ -266,6 +266,19 @@ export const positionService = {
     await api.post('/positions/refresh');
   },
 
+  // Real technical analysis endpoint
+  getManualPositionAnalysis: async (symbol: string): Promise<any> => {
+    return cachedRequest(
+      `position:manual:analysis:${symbol}`,
+      async () => {
+        const response = await api.get(`/positions/manual/${symbol}/analysis`);
+        return response.data;
+      },
+      120000 // 2 minutes cache for real-time data
+    );
+  },
+
+  // Mock fundamental data endpoint (to be improved)
   getPositionAnalysis: async (symbol: string): Promise<PositionAnalysis> => {
     return cachedRequest(
       `position:analysis:${symbol}`,

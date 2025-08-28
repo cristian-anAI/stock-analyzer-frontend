@@ -12,9 +12,11 @@ import {
   Select,
   MenuItem,
   Alert,
+  Autocomplete,
+  Chip,
 } from '@mui/material';
-import { Position, ManualPosition } from '../../types';
-import { positionService } from '../../services/api';
+import { Position, ManualPosition, Stock, Crypto } from '../../types';
+import { positionService, stockService, cryptoService } from '../../services/api';
 
 interface ManualPositionDialogProps {
   open: boolean;
@@ -37,6 +39,34 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stocks, setStocks] = useState<Stock[]>([]);
+  const [cryptos, setCryptos] = useState<Crypto[]>([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<Stock | Crypto | null>(null);
+  const [showWarning, setShowWarning] = useState(false);
+
+  // Load stocks and cryptos data when modal opens
+  useEffect(() => {
+    if (open) {
+      loadAssetsData();
+    }
+  }, [open]);
+
+  const loadAssetsData = async () => {
+    try {
+      setDataLoading(true);
+      const [stocksData, cryptosData] = await Promise.all([
+        stockService.getStocksByScore(),
+        cryptoService.getCryptosByScore()
+      ]);
+      setStocks(stocksData);
+      setCryptos(cryptosData);
+    } catch (err) {
+      console.error('Error loading assets data:', err);
+    } finally {
+      setDataLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (position) {
@@ -48,18 +78,24 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
         entryPrice: position.entryPrice,
         notes: '',
       });
+      // Find the asset in our lists to pre-select it
+      const allAssets = [...stocks, ...cryptos];
+      const foundAsset = allAssets.find(asset => asset.symbol === position.symbol);
+      setSelectedAsset(foundAsset || null);
     } else {
       setFormData({
         symbol: '',
         name: '',
         type: 'stock',
-        quantity: 0,
+        quantity: 1, // Default to 1 instead of 0
         entryPrice: 0,
         notes: '',
       });
+      setSelectedAsset(null);
     }
     setError(null);
-  }, [position, open]);
+    setShowWarning(false);
+  }, [position, open, stocks, cryptos]);
 
   const handleChange = (field: keyof ManualPosition) => (
     event: React.ChangeEvent<HTMLInputElement> | { target: { value: unknown } }
@@ -71,6 +107,55 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
         ? parseFloat(value as string) || 0 
         : value,
     }));
+  };
+
+  const handleAssetSelect = (asset: Stock | Crypto | null) => {
+    setSelectedAsset(asset);
+    setShowWarning(false);
+    
+    if (asset) {
+      // Determine asset type based on the lists it belongs to
+      const isStock = stocks.some(s => s.symbol === asset.symbol);
+      const assetType = isStock ? 'stock' : 'crypto';
+      
+      setFormData(prev => ({
+        ...prev,
+        symbol: asset.symbol,
+        name: asset.name,
+        type: assetType,
+        entryPrice: asset.currentPrice, // Auto-fill with current price
+      }));
+    }
+  };
+
+  const handleSymbolInputChange = (value: string) => {
+    setFormData(prev => ({ ...prev, symbol: value }));
+    
+    if (value && !selectedAsset) {
+      // Check if the entered symbol exactly matches any in our lists (exact match only)
+      const allAssets = [...stocks, ...cryptos];
+      const foundAsset = allAssets.find(asset => 
+        asset.symbol.toLowerCase() === value.toLowerCase()
+      );
+      
+      if (!foundAsset) {
+        // Only show warning if user has typed more than 2 characters
+        if (value.length > 2) {
+          setShowWarning(true);
+        }
+      } else {
+        setShowWarning(false);
+        // Only auto-select if it's an EXACT match (not partial)
+        // This prevents "BA" from matching when user is typing "BABA"
+        if (foundAsset.symbol.toLowerCase() === value.toLowerCase()) {
+          handleAssetSelect(foundAsset);
+        }
+      }
+    } else if (!value) {
+      // Clear warning and selection when input is empty
+      setShowWarning(false);
+      setSelectedAsset(null);
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -119,14 +204,84 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
               </Alert>
             )}
 
-            <TextField
-              label="Símbolo *"
-              value={formData.symbol}
-              onChange={handleChange('symbol')}
-              placeholder="ej: AAPL, BTC"
-              fullWidth
-              required
+            <Autocomplete
+              options={[...stocks, ...cryptos]}
+              getOptionLabel={(option) => 
+                typeof option === 'string' ? option : `${option.symbol} - ${option.name}`
+              }
+              value={selectedAsset || undefined}
+              inputValue={formData.symbol}
+              onChange={(event, newValue) => {
+                if (typeof newValue === 'string') {
+                  // Don't auto-complete while typing
+                  return;
+                } else if (newValue) {
+                  // Only auto-select when user clicks on an option from dropdown
+                  handleAssetSelect(newValue as Stock | Crypto);
+                }
+              }}
+              onInputChange={(event, newInputValue, reason) => {
+                // Only update on user input, not on option selection
+                if (reason === 'input') {
+                  handleSymbolInputChange(newInputValue);
+                }
+              }}
+              filterOptions={(options, { inputValue }) => {
+                if (!inputValue) return options;
+                
+                // Filter options that start with the input value for better matching
+                return options.filter(option =>
+                  option.symbol.toLowerCase().startsWith(inputValue.toLowerCase())
+                );
+              }}
+              loading={dataLoading}
+              freeSolo
+              disableClearable
+              autoHighlight={true}
+              autoSelect={false}
+              blurOnSelect={true}
+              clearOnBlur={false}
+              includeInputInList={false}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Símbolo *"
+                  placeholder="Busca o escribe: AAPL, BTC..."
+                  required
+                  fullWidth
+                  InputProps={{
+                    ...params.InputProps,
+                    autoComplete: 'off',
+                  }}
+                />
+              )}
+              renderOption={(props, option) => {
+                if (typeof option === 'string') return null;
+                return (
+                  <Box component="li" {...props} display="flex" justifyContent="space-between">
+                    <Box>
+                      <strong>{option.symbol}</strong> - {option.name}
+                    </Box>
+                    <Box>
+                      <Chip 
+                        label={stocks.some(s => s.symbol === option.symbol) ? 'Stock' : 'Crypto'} 
+                        size="small" 
+                        color={stocks.some(s => s.symbol === option.symbol) ? 'primary' : 'secondary'}
+                      />
+                      <span style={{ marginLeft: 8, fontWeight: 'bold' }}>
+                        ${option.currentPrice.toFixed(2)}
+                      </span>
+                    </Box>
+                  </Box>
+                );
+              }}
             />
+
+            {showWarning && (
+              <Alert severity="warning" sx={{ mt: 1 }}>
+                No se encontró información para este símbolo. Los datos de precios y análisis pueden no estar disponibles.
+              </Alert>
+            )}
 
             <TextField
               label="Nombre *"
@@ -135,6 +290,7 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
               placeholder="ej: Apple Inc., Bitcoin"
               fullWidth
               required
+              disabled={!!selectedAsset} // Disable if asset is auto-selected
             />
 
             <FormControl fullWidth>
@@ -144,31 +300,78 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
                 onChange={handleChange('type')}
                 label="Tipo *"
                 required
+                disabled={!!selectedAsset} // Disable when asset is selected
               >
                 <MenuItem value="stock">Stock</MenuItem>
                 <MenuItem value="crypto">Crypto</MenuItem>
               </Select>
             </FormControl>
+            {selectedAsset && (
+              <Alert severity="info" sx={{ mt: 1 }}>
+                Tipo detectado automáticamente: {formData.type === 'stock' ? 'Stock' : 'Crypto'}
+              </Alert>
+            )}
 
             <TextField
               label="Cantidad *"
               type="number"
               value={formData.quantity}
               onChange={handleChange('quantity')}
-              inputProps={{ min: 0, step: 0.001 }}
+              inputProps={{ 
+                min: 0, 
+                step: formData.type === 'crypto' ? 0.001 : 1,
+                'aria-label': 'Cantidad a comprar'
+              }}
+              placeholder={formData.type === 'crypto' ? '0.001' : '1'}
+              helperText={formData.type === 'crypto' ? 
+                'Puedes usar decimales para crypto (ej: 0.5)' : 
+                'Número de acciones (entero)'
+              }
               fullWidth
               required
             />
 
-            <TextField
-              label="Precio de Entrada *"
-              type="number"
-              value={formData.entryPrice}
-              onChange={handleChange('entryPrice')}
-              inputProps={{ min: 0, step: 0.01 }}
-              fullWidth
-              required
-            />
+            <Box>
+              <TextField
+                label="Precio de Entrada *"
+                type="number"
+                value={formData.entryPrice}
+                onChange={handleChange('entryPrice')}
+                inputProps={{ min: 0, step: 0.01 }}
+                fullWidth
+                required
+                helperText={selectedAsset ? 
+                  `Precio actual: $${selectedAsset.currentPrice.toFixed(selectedAsset.symbol.endsWith('-USD') ? 4 : 2)}` : 
+                  'Introduce el precio de compra'
+                }
+              />
+              {selectedAsset && formData.entryPrice !== selectedAsset.currentPrice && formData.entryPrice > 0 && (
+                <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                  <Button 
+                    size="small" 
+                    onClick={() => setFormData(prev => ({ ...prev, entryPrice: selectedAsset.currentPrice }))}
+                    variant="outlined"
+                  >
+                    Usar precio actual (${selectedAsset.currentPrice.toFixed(selectedAsset.symbol.endsWith('-USD') ? 4 : 2)})
+                  </Button>
+                </Box>
+              )}
+            </Box>
+
+            {/* Investment summary */}
+            {formData.quantity > 0 && formData.entryPrice > 0 && (
+              <Alert severity="info" sx={{ mt: 1 }}>
+                <Box>
+                  <strong>Resumen de la inversión:</strong>
+                  <br />
+                  Cantidad: {formData.quantity} {formData.type === 'stock' ? 'acciones' : 'unidades'}
+                  <br />
+                  Precio por unidad: ${formData.entryPrice.toFixed(formData.type === 'crypto' ? 4 : 2)}
+                  <br />
+                  <strong>Valor total: ${(formData.quantity * formData.entryPrice).toFixed(2)}</strong>
+                </Box>
+              </Alert>
+            )}
 
             <TextField
               label="Notas"

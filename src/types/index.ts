@@ -163,7 +163,7 @@ export interface PortfolioPositionsResponse {
 
 export interface Transaction {
   symbol: string;
-  action: 'buy' | 'sell';
+  action: 'buy' | 'sell' | 'short' | 'cover';
   quantity: number;
   price: number;
   total_amount: number;

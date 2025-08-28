@@ -22,12 +22,6 @@ const ScoreChip: React.FC<ScoreChipProps> = ({
   const label = getScoreLabel(score);
   const description = getScoreDescription(score);
 
-  const getScoreEmoji = (score: number) => {
-    if (score >= 8) return 'Strong Buy';
-    if (score >= 6) return 'Buy';
-    if (score >= 4) return 'Hold';
-    return 'Sell';
-  };
 
   const tooltipContent = (
     <Box>
