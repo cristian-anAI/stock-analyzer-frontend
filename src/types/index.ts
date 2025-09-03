@@ -172,6 +172,12 @@ export interface Transaction {
   score: number;
   timestamp: string;
   source: string;
+  // P&L fields for closed positions
+  realized_pnl?: number;
+  entry_price?: number;
+  exit_price?: number;
+  position_id?: string;
+  hold_duration_hours?: number;
 }
 
 export interface TransactionsResponse {

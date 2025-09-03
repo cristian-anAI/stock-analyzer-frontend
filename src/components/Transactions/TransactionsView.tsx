@@ -36,7 +36,7 @@ import {
   GetApp as ExportIcon,
 } from '@mui/icons-material';
 import { Transaction } from '../../types';
-import { portfolioService } from '../../services/api';
+import { portfolioService, autotraderService } from '../../services/api';
 import { usePolling } from '../../hooks/usePolling';
 
 interface TabPanelProps {
@@ -64,6 +64,8 @@ function TabPanel(props: TabPanelProps) {
 const TransactionsView: React.FC = () => {
   const [stockTransactions, setStockTransactions] = useState<Transaction[]>([]);
   const [cryptoTransactions, setCryptoTransactions] = useState<Transaction[]>([]);
+  const [autotraderTransactions, setAutotraderTransactions] = useState<Transaction[]>([]);
+  const [autotraderSummary, setAutotraderSummary] = useState<{total_realized_pnl: number; win_rate: number; average_hold_hours: number} | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,14 +89,17 @@ const TransactionsView: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      // Fetch both stock and crypto transactions
-      const [stockData, cryptoData] = await Promise.all([
+      // Fetch stock, crypto, and autotrader transactions
+      const [stockData, cryptoData, autotraderData] = await Promise.all([
         portfolioService.getStockTransactions(),
-        portfolioService.getCryptoTransactions()
+        portfolioService.getCryptoTransactions(),
+        autotraderService.getAutotraderTransactions()
       ]);
       
       setStockTransactions(stockData.transactions);
       setCryptoTransactions(cryptoData.transactions);
+      setAutotraderTransactions(autotraderData.transactions);
+      setAutotraderSummary(autotraderData.summary);
     } catch (err) {
       setError('Error al cargar las transacciones');
       console.error('Error fetching transactions:', err);
@@ -133,7 +138,9 @@ const TransactionsView: React.FC = () => {
   };
 
   const getCurrentTransactions = () => {
-    return tabValue === 0 ? stockTransactions : cryptoTransactions;
+    if (tabValue === 0) return stockTransactions;
+    if (tabValue === 1) return cryptoTransactions;
+    return autotraderTransactions;
   };
 
   const getFilteredTransactions = () => {
@@ -312,6 +319,8 @@ const TransactionsView: React.FC = () => {
             <TableCell align="right">Precio</TableCell>
             <TableCell align="right">Total</TableCell>
             <TableCell align="right">Comisiones</TableCell>
+            <TableCell align="right">P&L Realizado</TableCell>
+            <TableCell align="right">Duración</TableCell>
             <TableCell align="center">Score</TableCell>
             <TableCell>Razón</TableCell>
             <TableCell align="center">Fuente</TableCell>
@@ -371,6 +380,40 @@ const TransactionsView: React.FC = () => {
                   {formatAmount(transaction.fees)}
                 </Typography>
               </TableCell>
+              
+              {/* P&L Realizado */}
+              <TableCell align="right">
+                {transaction.realized_pnl !== undefined ? (
+                  <Typography 
+                    variant="body2" 
+                    fontWeight="bold"
+                    color={transaction.realized_pnl >= 0 ? 'success.main' : 'error.main'}
+                  >
+                    {transaction.realized_pnl >= 0 ? '+' : ''}{formatAmount(transaction.realized_pnl)}
+                  </Typography>
+                ) : (
+                  <Typography variant="body2" color="textSecondary">
+                    -
+                  </Typography>
+                )}
+              </TableCell>
+              
+              {/* Duración */}
+              <TableCell align="right">
+                {transaction.hold_duration_hours !== undefined ? (
+                  <Typography variant="body2" color="textSecondary">
+                    {transaction.hold_duration_hours < 24 
+                      ? `${transaction.hold_duration_hours.toFixed(1)}h`
+                      : `${(transaction.hold_duration_hours / 24).toFixed(1)}d`
+                    }
+                  </Typography>
+                ) : (
+                  <Typography variant="body2" color="textSecondary">
+                    -
+                  </Typography>
+                )}
+              </TableCell>
+              
               <TableCell align="center">
                 {transaction.score ? (
                   <Chip
@@ -587,6 +630,7 @@ const TransactionsView: React.FC = () => {
         <Tabs value={tabValue} onChange={handleTabChange}>
           <Tab label={`Stocks (${stockTransactions.length})`} />
           <Tab label={`Cryptos (${cryptoTransactions.length})`} />
+          <Tab label={`Autotrader (${autotraderTransactions.length})`} />
         </Tabs>
       </Box>
 
@@ -600,6 +644,56 @@ const TransactionsView: React.FC = () => {
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
+        {renderTransactionsTable(paginatedTransactions())}
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={2}>
+        {autotraderSummary && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Resumen P&L Autotrader
+            </Typography>
+            <Box display="flex" gap={2} mb={2}>
+              <Card sx={{ minWidth: 120 }}>
+                <CardContent sx={{ p: 2 }}>
+                  <Typography variant="body2" color="textSecondary">
+                    P&L Total Realizado
+                  </Typography>
+                  <Typography 
+                    variant="h6" 
+                    color={autotraderSummary.total_realized_pnl >= 0 ? 'success.main' : 'error.main'}
+                    fontWeight="bold"
+                  >
+                    ${autotraderSummary.total_realized_pnl.toFixed(2)}
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ minWidth: 120 }}>
+                <CardContent sx={{ p: 2 }}>
+                  <Typography variant="body2" color="textSecondary">
+                    Tasa de Éxito
+                  </Typography>
+                  <Typography variant="h6" fontWeight="bold">
+                    {(autotraderSummary.win_rate * 100).toFixed(1)}%
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ minWidth: 120 }}>
+                <CardContent sx={{ p: 2 }}>
+                  <Typography variant="body2" color="textSecondary">
+                    Hold Promedio
+                  </Typography>
+                  <Typography variant="h6" fontWeight="bold">
+                    {autotraderSummary.average_hold_hours < 24 
+                      ? `${autotraderSummary.average_hold_hours.toFixed(1)}h`
+                      : `${(autotraderSummary.average_hold_hours / 24).toFixed(1)}d`
+                    }
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Box>
+          </Box>
+        )}
         {renderTransactionsTable(paginatedTransactions())}
       </TabPanel>
 
@@ -691,7 +785,7 @@ const TransactionsView: React.FC = () => {
               <Typography variant="h6" gutterBottom>
                 Razón de la Transacción
               </Typography>
-              <Paper elevation={1} sx={{ p: 2, bgcolor: 'grey.50' }}>
+              <Paper elevation={1} sx={{ p: 2, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}>
                 <Typography variant="body1" color="text.primary">
                   {selectedTransaction.reason}
                 </Typography>

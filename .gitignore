@@ -100,4 +100,5 @@ temp/
 
 # Claude Code specific
 .claude/
+CLAUDE.md
 CLAUDE.md.backup*

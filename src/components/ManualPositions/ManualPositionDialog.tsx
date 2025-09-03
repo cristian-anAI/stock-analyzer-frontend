@@ -131,25 +131,33 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
   const handleSymbolInputChange = (value: string) => {
     setFormData(prev => ({ ...prev, symbol: value }));
     
+    // Clear any previous selection when user types
+    if (selectedAsset && selectedAsset.symbol !== value) {
+      setSelectedAsset(null);
+      setFormData(prev => ({ 
+        ...prev, 
+        name: '',
+        type: 'stock',
+        entryPrice: 0
+      }));
+    }
+    
     if (value && !selectedAsset) {
-      // Check if the entered symbol exactly matches any in our lists (exact match only)
+      // Only auto-complete on EXACT symbol match (case insensitive)
       const allAssets = [...stocks, ...cryptos];
-      const foundAsset = allAssets.find(asset => 
+      const exactMatch = allAssets.find(asset => 
         asset.symbol.toLowerCase() === value.toLowerCase()
       );
       
-      if (!foundAsset) {
-        // Only show warning if user has typed more than 2 characters
+      if (!exactMatch) {
+        // Show warning only if user has typed more than 2 characters
         if (value.length > 2) {
           setShowWarning(true);
         }
       } else {
         setShowWarning(false);
-        // Only auto-select if it's an EXACT match (not partial)
-        // This prevents "BA" from matching when user is typing "BABA"
-        if (foundAsset.symbol.toLowerCase() === value.toLowerCase()) {
-          handleAssetSelect(foundAsset);
-        }
+        // Auto-select only on exact match, not on partial matches
+        handleAssetSelect(exactMatch);
       }
     } else if (!value) {
       // Clear warning and selection when input is empty
@@ -229,10 +237,30 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
               filterOptions={(options, { inputValue }) => {
                 if (!inputValue) return options;
                 
-                // Filter options that start with the input value for better matching
-                return options.filter(option =>
-                  option.symbol.toLowerCase().startsWith(inputValue.toLowerCase())
+                // Filter options that contain the input value, prioritizing exact matches
+                const filtered = options.filter(option =>
+                  option.symbol.toLowerCase().includes(inputValue.toLowerCase()) ||
+                  option.name.toLowerCase().includes(inputValue.toLowerCase())
                 );
+                
+                // Sort to put exact symbol matches first
+                return filtered.sort((a, b) => {
+                  const aSymbolMatch = a.symbol.toLowerCase() === inputValue.toLowerCase();
+                  const bSymbolMatch = b.symbol.toLowerCase() === inputValue.toLowerCase();
+                  
+                  if (aSymbolMatch && !bSymbolMatch) return -1;
+                  if (!aSymbolMatch && bSymbolMatch) return 1;
+                  
+                  // Then sort by symbol startsWith
+                  const aStartsWith = a.symbol.toLowerCase().startsWith(inputValue.toLowerCase());
+                  const bStartsWith = b.symbol.toLowerCase().startsWith(inputValue.toLowerCase());
+                  
+                  if (aStartsWith && !bStartsWith) return -1;
+                  if (!aStartsWith && bStartsWith) return 1;
+                  
+                  // Finally alphabetical
+                  return a.symbol.localeCompare(b.symbol);
+                });
               }}
               loading={dataLoading}
               freeSolo

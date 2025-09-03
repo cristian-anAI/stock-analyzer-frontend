@@ -4,6 +4,7 @@ import {
   Crypto, 
   Position, 
   ManualPosition, 
+  Transaction,
   PortfolioOverview, 
   PortfolioPositionsResponse, 
   TransactionsResponse, 
@@ -93,6 +94,25 @@ const mapPositionData = (data: any): Position => ({
   positionSide: data.position_side || data.positionSide,
   createdAt: data.created_at || data.createdAt,
   updatedAt: data.updated_at || data.updatedAt,
+});
+
+const mapTransactionData = (data: any): Transaction => ({
+  symbol: data.symbol,
+  action: data.action,
+  quantity: data.quantity,
+  price: data.price,
+  total_amount: data.total_amount,
+  fees: data.fees || 0,
+  reason: data.reason || '',
+  score: data.score || 0,
+  timestamp: data.timestamp,
+  source: data.source || '',
+  // P&L fields
+  realized_pnl: data.realized_pnl,
+  entry_price: data.entry_price,
+  exit_price: data.exit_price,
+  position_id: data.position_id,
+  hold_duration_hours: data.hold_duration_hours,
 });
 
 const api = axios.create({
@@ -312,6 +332,7 @@ export const autotraderService = {
     // Invalidate relevant caches when running autotrader
     cacheService.invalidatePattern('positions:');
     cacheService.invalidate(CACHE_KEYS.AUTOTRADER_SUMMARY);
+    cacheService.invalidatePattern('autotrader:transactions');
     
     const response = await api.post('/autotrader/run');
     return response.data;
@@ -324,6 +345,26 @@ export const autotraderService = {
         const response = await api.get('/autotrader/summary');
         return response.data;
       }
+    );
+  },
+
+  getAutotraderTransactions: async (limit?: number, symbol?: string): Promise<TransactionsResponse & { summary: { total_realized_pnl: number; win_rate: number; average_hold_hours: number } }> => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (symbol) params.append('symbol', symbol);
+    
+    const cacheKey = `autotrader:transactions:${limit || 'all'}:${symbol || 'all'}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/autotrader/transactions?${params.toString()}`);
+        return {
+          ...response.data,
+          transactions: response.data.transactions.map(mapTransactionData)
+        };
+      },
+      300000 // 5 minutes cache
     );
   },
 };
