@@ -339,3 +339,261 @@ export interface AlertNotification {
   positionSymbol: string;
   dismissible: boolean;
 }
+
+// Crypto-specific MTSS Multi-Timeframe Analysis Types
+export type CryptoTimeframe = '1h' | '4h' | '1d' | '1w';
+
+export interface CryptoTimeframeData {
+  timeframe: CryptoTimeframe;
+  score: number;
+  rsi: number;
+  momentum_7d: number;
+  momentum_14d: number;
+  momentum_21d: number;
+  volume_trend: 'increasing' | 'decreasing' | 'stable';
+  price_action: {
+    breakout_detected: boolean;
+    reversal_signal: boolean;
+    support_level?: number;
+    resistance_level?: number;
+  };
+  volatility: number;
+  confidence: number;
+  last_updated: string;
+}
+
+export interface CryptoMTSSAnalysis {
+  symbol: string;
+  overall_score: number;
+  signal: 'BUY' | 'SELL' | 'HOLD' | 'WAIT';
+  confidence: number;
+  timeframes: Record<CryptoTimeframe, CryptoTimeframeData>;
+  risk_metrics: {
+    atr_percentage: number;
+    volatility_24h: number;
+    btc_correlation: number;
+    risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
+    max_drawdown_7d: number;
+  };
+  trade_signals: {
+    entry_price?: number;
+    stop_loss_atr?: number; // ATR-based dynamic stop loss
+    take_profit_levels: number[];
+    position_size_percent: number;
+    max_hold_hours: number;
+  };
+  btc_impact: {
+    correlation_score: number;
+    influence_level: 'LOW' | 'MEDIUM' | 'HIGH';
+    independent_strength: number; // How well it moves independently of BTC
+    btc_dominance_effect: number; // Impact of BTC dominance changes
+  };
+  portfolio_integration: {
+    allocation_weight: number; // Suggested allocation within crypto portfolio
+    diversification_score: number; // How much it diversifies the portfolio
+    correlation_with_existing: number; // Correlation with current positions
+  };
+  analysis_metadata: {
+    analysis_time: string;
+    data_quality_score: number;
+    optimization_level: 'basic' | 'crypto_optimized' | 'advanced';
+    rsi_levels_used: [number, number]; // [oversold, overbought]
+    momentum_periods_used: number[];
+  };
+}
+
+export interface CryptoRiskManagement {
+  symbol: string;
+  position_sizing: {
+    kelly_criterion: number;
+    volatility_adjusted: number;
+    correlation_adjusted: number;
+    recommended_size: number;
+  };
+  stop_loss: {
+    atr_based: number; // Dynamic ATR-based stop
+    support_based?: number; // Support level-based stop
+    trailing_stop: {
+      enabled: boolean;
+      trail_amount_percent: number;
+      activation_price?: number;
+    };
+  };
+  take_profit: {
+    levels: Array<{
+      price: number;
+      percentage_to_close: number;
+      confidence: number;
+    }>;
+    trailing_profit: {
+      enabled: boolean;
+      trail_amount_percent: number;
+      lock_profit_at_percent: number;
+    };
+  };
+  risk_assessment: {
+    volatility_risk: number;
+    liquidity_risk: number;
+    correlation_risk: number;
+    overall_risk_score: number;
+    max_position_size: number;
+  };
+}
+
+export interface CryptoPortfolioConfig {
+  total_capital: number; // $50,000 for crypto
+  max_positions: number; // Maximum 5 crypto positions
+  max_single_position_percent: number; // Max % per position
+  rebalance_threshold: number; // When to trigger rebalance
+  correlation_threshold: number; // Max correlation between positions
+  btc_hedge_requirement: boolean; // Whether to maintain BTC exposure
+  risk_budget: {
+    conservative: number; // % allocation
+    moderate: number; // % allocation  
+    aggressive: number; // % allocation
+  };
+}
+
+// Asset Type Detection Utilities
+export const detectAssetType = (symbol: string): 'stock' | 'crypto' => {
+  if (!symbol) return 'stock';
+  
+  const upperSymbol = symbol.toUpperCase();
+  
+  // Crypto patterns
+  const cryptoPatterns = [
+    /.*-USD$/,           // BTC-USD, ETH-USD, SOL-USD
+    /.*-USDT$/,          // BTC-USDT, ETH-USDT
+    /.*-USDC$/,          // BTC-USDC, ETH-USDC
+    /.*USD$/,            // BTCUSD, ETHUSD (without dash)
+    /^(BTC|ETH|SOL|ADA|DOT|LINK|AVAX|MATIC|UNI|AAVE|COMP|SUSHI|YFI|SNX|MKR|CRV|BAL|REN|KNC|ZRX|REP)$/
+  ];
+  
+  // Check if symbol matches any crypto pattern
+  const isCrypto = cryptoPatterns.some(pattern => pattern.test(upperSymbol));
+  
+  // Stock patterns (typically 1-5 uppercase letters without special characters)
+  const stockPattern = /^[A-Z]{1,5}$/;
+  const isStock = stockPattern.test(upperSymbol);
+  
+  // Default logic:
+  // 1. If matches crypto patterns -> crypto
+  // 2. If matches stock pattern and no crypto indicators -> stock
+  // 3. If has dash or special chars -> likely crypto
+  // 4. Default to stock for ambiguous cases
+  
+  if (isCrypto) return 'crypto';
+  if (isStock) return 'stock';
+  if (upperSymbol.includes('-') || upperSymbol.includes('/')) return 'crypto';
+  
+  return 'stock'; // Default fallback
+};
+
+export const getAssetTypeLabel = (assetType: 'stock' | 'crypto'): string => {
+  return assetType === 'crypto' ? 'Cryptocurrency' : 'Stock';
+};
+
+export const isKnownCryptoSymbol = (symbol: string): boolean => {
+  const knownCryptos = [
+    'BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'LINK', 'AVAX', 'MATIC', 'UNI', 'AAVE',
+    'COMP', 'SUSHI', 'YFI', 'SNX', 'MKR', 'CRV', 'BAL', 'REN', 'KNC', 'ZRX',
+    'REP', 'LTC', 'BCH', 'XRP', 'DOGE', 'SHIB', 'PEPE', 'ATOM', 'NEAR', 'FTM'
+  ];
+  
+  const baseSymbol = symbol.replace(/-USD.*$/, '').replace(/USD$/, '').toUpperCase();
+  return knownCryptos.includes(baseSymbol);
+};
+
+// Crypto symbol mapping for API calls
+export const getCryptoSymbolForAPI = (symbol: string): string => {
+  const cryptoMap: Record<string, string> = {
+    'BTC': 'BTC-USD',
+    'ETH': 'ETH-USD',
+    'ADA': 'ADA-USD', 
+    'SOL': 'SOL-USD',
+    'DOT': 'DOT-USD',
+    'MATIC': 'MATIC-USD',
+    'AVAX': 'AVAX-USD',
+    'LINK': 'LINK-USD',
+    'UNI': 'UNI-USD',
+    'LTC': 'LTC-USD',
+    'AAVE': 'AAVE-USD',
+    'COMP': 'COMP-USD',
+    'SUSHI': 'SUSHI-USD',
+    'YFI': 'YFI-USD',
+    'SNX': 'SNX-USD',
+    'MKR': 'MKR-USD',
+    'CRV': 'CRV-USD',
+    'BAL': 'BAL-USD',
+    'REN': 'REN-USD',
+    'KNC': 'KNC-USD',
+    'ZRX': 'ZRX-USD',
+    'REP': 'REP-USD'
+  };
+
+  // If already has -USD suffix, return as is
+  if (symbol.includes('-USD') || symbol.includes('-USDT') || symbol.includes('-BTC')) {
+    return symbol;
+  }
+
+  // Map short symbol to full symbol
+  return cryptoMap[symbol.toUpperCase()] || symbol;
+};
+
+// Color mapping based on new backend color system
+export type CryptoOverviewColor = 'green' | 'lightgreen' | 'yellow' | 'orange' | 'red' | 'gray';
+
+export const getCryptoColorHex = (color: CryptoOverviewColor): string => {
+  const colorMap: Record<CryptoOverviewColor, string> = {
+    'green': '#22c55e',      // Strong Buy (7.0+)
+    'lightgreen': '#84cc16', // Buy (6.0-6.9)
+    'yellow': '#eab308',     // Hold (4.0-5.9)
+    'orange': '#f97316',     // Weak (2.0-3.9)
+    'red': '#ef4444',        // Sell/Avoid (<2.0)
+    'gray': '#6b7280'        // Error/No Data
+  };
+  
+  return colorMap[color] || colorMap.gray;
+};
+
+export const getCryptoActionLabel = (action: string): string => {
+  const actionMap: Record<string, string> = {
+    'buy': 'BUY',
+    'hold': 'HOLD',
+    'sell': 'SELL',
+    'wait': 'WAIT'
+  };
+  
+  return actionMap[action?.toLowerCase()] || action?.toUpperCase() || 'N/A';
+};
+
+export const getCryptoActionColor = (action: string): 'success' | 'warning' | 'error' | 'info' => {
+  switch (action?.toLowerCase()) {
+    case 'buy':
+      return 'success';
+    case 'hold':
+      return 'warning';
+    case 'sell':
+      return 'error';
+    case 'wait':
+      return 'info';
+    default:
+      return 'info';
+  }
+};
+
+// Interface for crypto overview response
+export interface CryptoOverviewItem {
+  symbol: string;
+  score: number;
+  color: CryptoOverviewColor;
+  action: string;
+  price: number;
+  change_percent: number;
+}
+
+export interface CryptoOverviewResponse {
+  status: string;
+  overview: Record<string, CryptoOverviewItem>;
+  last_updated: string;
+}

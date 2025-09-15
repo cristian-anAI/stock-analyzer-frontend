@@ -123,7 +123,7 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
         symbol: asset.symbol,
         name: asset.name,
         type: assetType,
-        entryPrice: asset.currentPrice, // Auto-fill with current price
+        entryPrice: Number(asset.currentPrice.toFixed(2)), // Auto-fill with current price (max 2 decimals)
       }));
     }
   };
@@ -369,7 +369,7 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
                 fullWidth
                 required
                 helperText={selectedAsset ? 
-                  `Precio actual: $${selectedAsset.currentPrice.toFixed(selectedAsset.symbol.endsWith('-USD') ? 4 : 2)}` : 
+                  `Precio actual: $${selectedAsset.currentPrice.toFixed(2)}` : 
                   'Introduce el precio de compra'
                 }
               />
@@ -377,10 +377,10 @@ const ManualPositionDialog: React.FC<ManualPositionDialogProps> = ({
                 <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
                   <Button 
                     size="small" 
-                    onClick={() => setFormData(prev => ({ ...prev, entryPrice: selectedAsset.currentPrice }))}
+                    onClick={() => setFormData(prev => ({ ...prev, entryPrice: Number(selectedAsset.currentPrice.toFixed(2)) }))}
                     variant="outlined"
                   >
-                    Usar precio actual (${selectedAsset.currentPrice.toFixed(selectedAsset.symbol.endsWith('-USD') ? 4 : 2)})
+                    Usar precio actual (${selectedAsset.currentPrice.toFixed(2)})
                   </Button>
                 </Box>
               )}

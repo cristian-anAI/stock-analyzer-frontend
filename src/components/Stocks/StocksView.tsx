@@ -27,14 +27,36 @@ import { Stock } from '../../types';
 import { stockService } from '../../services/api';
 import { usePolling } from '../../hooks/usePolling';
 import ScoreChip from '../Common/ScoreChip';
+import MTSSIndicator from '../Common/MTSSIndicator';
+import SystemHealthIndicator from '../Common/SystemHealthIndicator';
+import { MTSSAnalysisModal } from '../MTSS';
+
+interface StockWithMTSS extends Stock {
+  mtssData?: {
+    unified_score?: number;
+    trading_signal?: string;
+    timeframe_scores?: {
+      '1M'?: number;
+      '1W'?: number;
+      '1d'?: number;
+      '1h'?: number;
+    };
+    analysis_performed?: boolean;
+    confidence?: number;
+  } | null;
+}
 
 const StocksView: React.FC = () => {
-  const [allStocks, setAllStocks] = useState<Stock[]>([]);
-  const [filteredStocks, setFilteredStocks] = useState<Stock[]>([]);
+  const [allStocks, setAllStocks] = useState<StockWithMTSS[]>([]);
+  const [filteredStocks, setFilteredStocks] = useState<StockWithMTSS[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [mtssLoading, setMtssLoading] = useState(false);
+  const [mtssLoadedCount, setMtssLoadedCount] = useState(0);
+  const [currentWave, setCurrentWave] = useState<1 | 2 | 3 | null>(null);
+  const [waveProgress, setWaveProgress] = useState({ wave1: 0, wave2: 0, wave3: 0 });
   
   // Filtros y paginación
   const [searchTerm, setSearchTerm] = useState('');
@@ -44,13 +66,79 @@ const StocksView: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
 
+  // MTSS Analysis Modal
+  const [selectedSymbolForMTSS, setSelectedSymbolForMTSS] = useState<string>('');
+  const [mtssModalOpen, setMtssModalOpen] = useState(false);
+
+  // Smart cache functions - optimized for bulk endpoint
+  const getCachedMTSS = (symbol: string) => {
+    try {
+      const cached = sessionStorage.getItem(`mtss_${symbol}`);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        // Cache válido por 30 minutos
+        if (Date.now() - timestamp < 30 * 60 * 1000) {
+          return data;
+        } else {
+          sessionStorage.removeItem(`mtss_${symbol}`);
+        }
+      }
+    } catch (error) {
+      console.error(`Error reading cache for ${symbol}:`, error);
+    }
+    return null;
+  };
+
+  const setCachedMTSS = (symbol: string, data: any) => {
+    try {
+      sessionStorage.setItem(`mtss_${symbol}`, JSON.stringify({
+        data,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      console.error(`Error caching MTSS for ${symbol}:`, error);
+    }
+  };
+
+  // Cache bulk data timestamp to avoid frequent calls
+  const getBulkCacheTimestamp = () => {
+    try {
+      const cached = sessionStorage.getItem('mtss_bulk_timestamp');
+      return cached ? parseInt(cached) : 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  const setBulkCacheTimestamp = () => {
+    try {
+      sessionStorage.setItem('mtss_bulk_timestamp', Date.now().toString());
+    } catch (error) {
+      console.error('Error setting bulk cache timestamp:', error);
+    }
+  };
+
   const fetchStocks = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       // Usar getAllStocks para obtener TODAS las stocks
       const data = await stockService.getAllStocks();
-      setAllStocks(data);
+      const stocksWithMTSS = data.map((stock: Stock): StockWithMTSS => {
+        // Intentar cargar desde cache
+        const cachedMTSS = getCachedMTSS(stock.symbol);
+        return {
+          ...stock,
+          mtssData: cachedMTSS
+        };
+      });
+      setAllStocks(stocksWithMTSS);
+      
+      // Log cache stats
+      const cachedCount = stocksWithMTSS.filter(s => s.mtssData).length;
+      if (cachedCount > 0) {
+        console.log(`💾 Cache hit: ${cachedCount} stocks loaded from sessionStorage`);
+      }
     } catch (err) {
       setError('Error al cargar las acciones');
       console.error('Error fetching stocks:', err);
@@ -59,9 +147,149 @@ const StocksView: React.FC = () => {
     }
   }, []);
 
+  // Función para transformar datos bulk a estructura MTSS esperada
+  const transformBulkToMTSSData = useCallback((bulkResults: any[]) => {
+    return bulkResults.map(stock => ({
+      symbol: stock.symbol,
+      data: {
+        unified_score: stock.mtss?.unified_score,
+        trading_signal: stock.mtss?.trading_signal,
+        timeframe_scores: stock.mtss?.timeframe_scores,
+        analysis_performed: Boolean(stock.mtss), // True si hay datos MTSS
+        confidence: stock.mtss?.confidence
+      }
+    }));
+  }, []);
+
+  // Nueva función optimizada usando bulk endpoint con cache inteligente
+  const fetchMTSSBulk = useCallback(async () => {
+    // Check if we have recent bulk data (less than 10 minutes old)
+    const lastBulkFetch = getBulkCacheTimestamp();
+    const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+    
+    if (lastBulkFetch > tenMinutesAgo) {
+      console.log('💾 Using recent bulk cache, skipping API call');
+      return;
+    }
+    
+    setMtssLoading(true);
+    console.log('🚀 Loading MTSS data using bulk endpoint...');
+    
+    try {
+      const response = await fetch(
+        'http://localhost:8000/api/v1/mtss-bulk/scores?limit=500&min_score=0'
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Bulk endpoint failed: ${response.status}`);
+      }
+      
+      const bulkData = await response.json();
+      console.log(`📦 Bulk response: ${bulkData.results?.length || 0} stocks with MTSS data`);
+      
+      // Transformar datos bulk a formato esperado
+      const mtssResults = transformBulkToMTSSData(bulkData.results || []);
+      
+      // Actualizar todos los stocks con datos MTSS disponibles
+      setAllStocks(prevStocks => 
+        prevStocks.map(stock => {
+          const mtssResult = mtssResults.find(r => r.symbol === stock.symbol);
+          
+          if (mtssResult && mtssResult.data) {
+            // Cache los datos
+            setCachedMTSS(stock.symbol, mtssResult.data);
+            return {
+              ...stock,
+              mtssData: mtssResult.data
+            };
+          }
+          return stock;
+        })
+      );
+      
+      const loadedCount = mtssResults.filter(r => r.data).length;
+      setMtssLoadedCount(loadedCount);
+      setBulkCacheTimestamp(); // Mark successful bulk fetch
+      console.log(`✅ Bulk MTSS data loaded for ${loadedCount} stocks`);
+      
+    } catch (error) {
+      console.error('❌ Error loading bulk MTSS data:', error);
+      setError('Error al cargar datos MTSS en lote');
+    } finally {
+      setMtssLoading(false);
+    }
+  }, [transformBulkToMTSSData, setCachedMTSS, getBulkCacheTimestamp, setBulkCacheTimestamp]);
+
+  // Función legacy para cargar símbolos específicos (solo para casos manuales)
+  const fetchMTSSBatch = useCallback(async (symbols: string[]) => {
+    if (symbols.length === 0) return;
+    
+    // Para símbolos específicos, usar el bulk y filtrar
+    setMtssLoading(true);
+    console.log(`🔄 Loading MTSS data for ${symbols.length} specific stocks...`);
+    
+    try {
+      const response = await fetch(
+        'http://localhost:8000/api/v1/mtss-bulk/scores?limit=500&min_score=0'
+      );
+      
+      if (!response.ok) throw new Error(`Bulk endpoint failed: ${response.status}`);
+      
+      const bulkData = await response.json();
+      const mtssResults = transformBulkToMTSSData(bulkData.results || [])
+        .filter(r => symbols.includes(r.symbol));
+      
+      // Actualizar solo los stocks solicitados
+      setAllStocks(prevStocks => 
+        prevStocks.map(stock => {
+          const mtssResult = mtssResults.find(r => r.symbol === stock.symbol);
+          
+          if (mtssResult && mtssResult.data) {
+            setCachedMTSS(stock.symbol, mtssResult.data);
+            return {
+              ...stock,
+              mtssData: mtssResult.data
+            };
+          }
+          return stock;
+        })
+      );
+      
+      const loadedCount = mtssResults.filter(r => r.data).length;
+      console.log(`✅ MTSS data loaded for ${loadedCount}/${symbols.length} requested stocks`);
+      
+    } catch (error) {
+      console.error('❌ Error loading specific MTSS data:', error);
+    } finally {
+      setMtssLoading(false);
+    }
+  }, [transformBulkToMTSSData, setCachedMTSS]);
+
+  // Función simplificada - ya no usa waves, usa bulk endpoint
+  const fetchMTSSBatchWithProgress = useCallback(async (symbols: string[], wave: 1 | 2 | 3) => {
+    // Redirigir al bulk endpoint para consistencia
+    console.log(`🌊 Wave ${wave} (using bulk endpoint): Loading MTSS data for ${symbols.length} stocks...`);
+    await fetchMTSSBulk();
+  }, [fetchMTSSBulk]);
+
   useEffect(() => {
     fetchStocks();
   }, [fetchStocks]);
+
+  // Simplified Loading Strategy: Single bulk call después de cargar stocks
+  useEffect(() => {
+    if (allStocks.length > 0 && !mtssLoading) {
+      // Verificar si ya tenemos datos MTSS desde cache
+      const stocksWithMTSS = allStocks.filter(stock => stock.mtssData).length;
+      
+      if (stocksWithMTSS === 0) {
+        console.log('🚀 No MTSS data found, loading bulk data...');
+        fetchMTSSBulk();
+      } else {
+        console.log(`💾 Found ${stocksWithMTSS} stocks with cached MTSS data`);
+      }
+    }
+  }, [allStocks, mtssLoading, fetchMTSSBulk]);
 
   // Filtrar y ordenar stocks
   useEffect(() => {
@@ -134,6 +362,11 @@ const StocksView: React.FC = () => {
     }
   };
 
+  const handleSymbolClick = (symbol: string) => {
+    setSelectedSymbolForMTSS(symbol);
+    setMtssModalOpen(true);
+  };
+
   const formatVolume = (volume: number) => {
     if (volume >= 1000000) {
       return `${(volume / 1000000).toFixed(1)}M`;
@@ -172,17 +405,68 @@ const StocksView: React.FC = () => {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">
-          Análisis de Acciones
-        </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={handleRefresh}
-          disabled={refreshing || loading}
-        >
-          {refreshing ? 'Actualizando...' : 'Actualizar'}
-        </Button>
+        <Box>
+          <Box display="flex" alignItems="center" gap={2} mb={1}>
+            <Typography variant="h4">
+              Análisis de Acciones
+            </Typography>
+            <SystemHealthIndicator />
+          </Box>
+          {mtssLoading && (
+            <Box display="flex" alignItems="center" gap={1}>
+              <CircularProgress size={16} />
+              <Typography variant="caption" color="text.secondary">
+                🚀 Cargando datos MTSS desde bulk endpoint... {mtssLoadedCount} completados
+              </Typography>
+            </Box>
+          )}
+          
+          {/* Progress Summary cuando no está loading */}
+          {!mtssLoading && mtssLoadedCount > 0 && (
+            <Box display="flex" alignItems="center" gap={2}>
+              <Typography variant="caption" color="success.main">
+                ✅ MTSS Bulk: {mtssLoadedCount} stocks con indicadores cargados
+              </Typography>
+            </Box>
+          )}
+        </Box>
+        <Box display="flex" gap={1}>
+          <Button
+            variant="outlined"
+            onClick={fetchMTSSBulk}
+            disabled={mtssLoading || loading}
+            size="small"
+          >
+            🚀 Recargar MTSS Bulk ({allStocks.filter(s => !s.mtssData).length} sin datos)
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              // Clear all MTSS data and reload
+              setAllStocks(prev => prev.map(stock => ({ ...stock, mtssData: null })));
+              setMtssLoadedCount(0);
+              // Clear cache
+              Object.keys(sessionStorage)
+                .filter(key => key.startsWith('mtss_'))
+                .forEach(key => sessionStorage.removeItem(key));
+              // Reload
+              setTimeout(fetchMTSSBulk, 100);
+            }}
+            disabled={mtssLoading || loading}
+            size="small"
+            color="warning"
+          >
+            🔄 Force Refresh MTSS
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+          >
+            {refreshing ? 'Actualizando...' : 'Actualizar'}
+          </Button>
+        </Box>
       </Box>
 
       {/* Estadísticas Resumen */}
@@ -231,6 +515,18 @@ const StocksView: React.FC = () => {
               </Typography>
               <Typography variant="body2" color="textSecondary">
                 Score ≥ 8.0
+              </Typography>
+            </CardContent>
+          </Card>
+        </Box>
+        <Box flex="1" minWidth="200px">
+          <Card>
+            <CardContent>
+              <Typography variant="h6" color="primary.main">
+                {allStocks.filter(s => s.mtssData?.analysis_performed).length}
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Con MTSS Completo
               </Typography>
             </CardContent>
           </Card>
@@ -311,7 +607,20 @@ const StocksView: React.FC = () => {
             {paginatedStocks.map((stock) => (
               <TableRow key={stock.id} hover>
                 <TableCell>
-                  <Typography variant="body2" fontWeight="bold">
+                  <Typography 
+                    variant="body2" 
+                    fontWeight="bold"
+                    sx={{ 
+                      cursor: 'pointer',
+                      color: 'primary.main',
+                      textDecoration: 'underline',
+                      '&:hover': {
+                        color: 'primary.dark',
+                      }
+                    }}
+                    onClick={() => handleSymbolClick(stock.symbol)}
+                    title="Ver análisis MTSS"
+                  >
                     {stock.symbol}
                   </Typography>
                 </TableCell>
@@ -320,7 +629,13 @@ const StocksView: React.FC = () => {
                     <Avatar sx={{ width: 24, height: 24, fontSize: '0.75rem' }}>
                       {stock.symbol.charAt(0)}
                     </Avatar>
-                    <Typography variant="body2">{stock.name}</Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography variant="body2">{stock.name}</Typography>
+                      <MTSSIndicator 
+                        symbol={stock.symbol} 
+                        mtssData={stock.mtssData}
+                      />
+                    </Box>
                   </Box>
                 </TableCell>
                 <TableCell align="right">
@@ -411,6 +726,13 @@ const StocksView: React.FC = () => {
         autoHideDuration={3000}
         onClose={() => setSnackbarOpen(false)}
         message="Acciones actualizadas correctamente"
+      />
+
+      {/* MTSS Analysis Modal */}
+      <MTSSAnalysisModal
+        symbol={selectedSymbolForMTSS}
+        isOpen={mtssModalOpen}
+        onClose={() => setMtssModalOpen(false)}
       />
     </Box>
   );

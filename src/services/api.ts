@@ -12,7 +12,10 @@ import {
   ComparisonAnalysis,
   PositionAnalysis,
   AlertConfig,
-  Alert
+  Alert,
+  detectAssetType,
+  CryptoOverviewResponse,
+  getCryptoSymbolForAPI
 } from '../types';
 import { cacheService, CACHE_KEYS } from './cache';
 
@@ -547,6 +550,168 @@ export const alertService = {
     const response = await api.get('/alerts/check');
     return response.data;
   },
+};
+
+// Crypto Overview Service - New optimized endpoints
+export const cryptoOverviewService = {
+  getCryptoOverview: async (): Promise<CryptoOverviewResponse> => {
+    const cacheKey = 'crypto:overview:all';
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get('/unified-scoring/crypto-overview');
+        return response.data;
+      },
+      300000 // 5 minutes cache to match backend cache
+    );
+  },
+
+  getAnalyzeAllCryptos: async (): Promise<any> => {
+    const cacheKey = 'crypto:analyze:all';
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get('/unified-scoring/analyze-all-cryptos');
+        return response.data;
+      },
+      300000 // 5 minutes cache
+    );
+  },
+
+  // Smart refresh - only refresh if cache is older than 5 minutes
+  smartRefreshCryptoOverview: async (): Promise<CryptoOverviewResponse | null> => {
+    const lastUpdate = localStorage.getItem('crypto_overview_last_update');
+    const now = Date.now();
+    const fiveMinutes = 300000; // 5 minutes in milliseconds
+
+    if (!lastUpdate || (now - parseInt(lastUpdate)) > fiveMinutes) {
+      try {
+        const data = await cryptoOverviewService.getCryptoOverview();
+        localStorage.setItem('crypto_overview_last_update', now.toString());
+        return data;
+      } catch (error: any) {
+        // If new endpoints are not available, don't throw error
+        if (error.response?.status === 404) {
+          console.warn('Crypto overview endpoint not available yet');
+          return null;
+        }
+        throw error; // Re-throw other errors
+      }
+    }
+
+    return null; // No refresh needed
+  },
+};
+
+// Crypto-specific MTSS Multi-Timeframe Analysis Service
+export const cryptoMTSSService = {
+  getCryptoMTSSAnalysis: async (symbol: string, forceAnalysis = false): Promise<any> => {
+    const fullSymbol = getCryptoSymbolForAPI(symbol); // BTC -> BTC-USD
+    const assetType = detectAssetType(fullSymbol);
+    const params = forceAnalysis ? '?force_analysis=true' : '';
+    const separator = params ? '&' : '?';
+    const cacheKey = `crypto:mtss:${fullSymbol}:${forceAnalysis ? 'forced' : 'cached'}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/unified-scoring/analyze/${fullSymbol}${params}${separator}asset_type=${assetType}`);
+        return response.data;
+      },
+      forceAnalysis ? 60000 : 300000 // 1 minute if forced, 5 minutes if cached
+    );
+  },
+
+  getCryptoTimeframeAnalysis: async (symbol: string, timeframes: string[] = ['1h', '4h', '1d', '1w']): Promise<any> => {
+    const timeframeParams = timeframes.join(',');
+    const cacheKey = `crypto:timeframes:${symbol}:${timeframeParams}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/crypto/mtss/timeframes/${symbol}?timeframes=${timeframeParams}`);
+        return response.data;
+      },
+      120000 // 2 minutes cache for timeframe data
+    );
+  },
+
+  getCryptoRiskMetrics: async (symbol: string): Promise<any> => {
+    const cacheKey = `crypto:risk:${symbol}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/crypto/risk/${symbol}`);
+        return response.data;
+      },
+      300000 // 5 minutes cache for risk metrics
+    );
+  },
+
+  getCryptoBTCCorrelation: async (symbol: string, period = '7d'): Promise<any> => {
+    const cacheKey = `crypto:btc-correlation:${symbol}:${period}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/crypto/btc-correlation/${symbol}?period=${period}`);
+        return response.data;
+      },
+      600000 // 10 minutes cache for correlation data
+    );
+  },
+
+  getCryptoPortfolioOptimization: async (capital = 50000, maxPositions = 5): Promise<any> => {
+    const cacheKey = `crypto:portfolio:optimization:${capital}:${maxPositions}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/crypto/portfolio/optimize?capital=${capital}&max_positions=${maxPositions}`);
+        return response.data;
+      },
+      1800000 // 30 minutes cache for portfolio optimization
+    );
+  },
+
+  runCryptoRebalance: async (): Promise<any> => {
+    // Clear cache when rebalancing
+    cacheService.invalidatePattern('crypto:portfolio:');
+    cacheService.invalidatePattern('portfolio:crypto:');
+    
+    const response = await api.post('/crypto/portfolio/rebalance');
+    return response.data;
+  },
+
+  getCryptoSystemHealth: async (): Promise<any> => {
+    // Don't cache system health - always fresh
+    const response = await api.get('/crypto/system/health');
+    return response.data;
+  },
+
+  // Batch analysis for multiple cryptos
+  getCryptoMTSSBatch: async (symbols: string[], cryptoOptimized = true): Promise<any> => {
+    const symbolsParam = symbols.join(',');
+    const cacheKey = `crypto:mtss:batch:${symbolsParam}:${cryptoOptimized}`;
+    
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.post('/crypto/mtss/batch', {
+          symbols,
+          crypto_optimized: cryptoOptimized,
+          rsi_levels: [20, 80], // Crypto-optimized RSI levels
+          momentum_periods: [7, 14, 21], // Shorter momentum periods for crypto
+          timeframes: ['1h', '4h', '1d', '1w']
+        });
+        return response.data;
+      },
+      300000 // 5 minutes cache for batch analysis
+    );
+  }
 };
 
 export default api;

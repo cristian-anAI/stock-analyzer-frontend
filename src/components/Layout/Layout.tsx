@@ -16,6 +16,7 @@ import {
   AccountBalance as PositionsIcon,
   Edit as ManualIcon,
   History as TransactionsIcon,
+  Psychology as MTSSIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ApiStatus from '../Common/ApiStatus';
@@ -30,6 +31,7 @@ const menuItems = [
   { text: 'Dashboard', path: '/', icon: <DashboardIcon /> },
   { text: 'Stocks', path: '/stocks', icon: <StocksIcon /> },
   { text: 'Cryptos', path: '/cryptos', icon: <CryptoIcon /> },
+  { text: 'MTSS Crypto Strategy', path: '/mtss-crypto', icon: <MTSSIcon /> },
   { text: 'Posiciones Autotrader', path: '/positions', icon: <PositionsIcon /> },
   { text: 'Posiciones Manuales', path: '/manual-positions', icon: <ManualIcon /> },
   { text: 'Historial Transacciones', path: '/transactions', icon: <TransactionsIcon /> },

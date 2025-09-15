@@ -20,20 +20,42 @@ import {
   TablePagination,
   Card,
   CardContent,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
-import { TrendingUp, TrendingDown, Refresh as RefreshIcon } from '@mui/icons-material';
-import { Crypto } from '../../types';
-import { cryptoService } from '../../services/api';
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  Refresh as RefreshIcon,
+  Psychology,
+  Analytics
+} from '@mui/icons-material';
+import { 
+  Crypto, 
+  CryptoOverviewItem,
+  getCryptoColorHex,
+  getCryptoActionLabel,
+  getCryptoActionColor 
+} from '../../types';
+import { cryptoService, cryptoOverviewService } from '../../services/api';
 import { usePolling } from '../../hooks/usePolling';
 import ScoreChip from '../Common/ScoreChip';
+import MTSSIndicator from '../Common/MTSSIndicator';
+import { MTSSAnalysisModal } from '../MTSS';
 
 const CryptosView: React.FC = () => {
   const [allCryptos, setAllCryptos] = useState<Crypto[]>([]);
+  const [cryptoOverview, setCryptoOverview] = useState<Record<string, CryptoOverviewItem> | null>(null);
   const [filteredCryptos, setFilteredCryptos] = useState<Crypto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  
+  // MTSS Analysis Modal
+  const [mtssModalOpen, setMtssModalOpen] = useState(false);
+  const [selectedCrypto, setSelectedCrypto] = useState<string>('');
   
   // Filtros y paginación
   const [searchTerm, setSearchTerm] = useState('');
@@ -46,7 +68,35 @@ const CryptosView: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      // Usar getAllCryptos para obtener TODAS las cryptos
+      
+      // Use new crypto overview endpoint first
+      try {
+        const overviewData = await cryptoOverviewService.getCryptoOverview();
+        if (overviewData.status === 'success') {
+          setCryptoOverview(overviewData.overview);
+          setLastUpdated(overviewData.last_updated);
+          
+          // Transform overview data to Crypto[] format for compatibility
+          const cryptosFromOverview: Crypto[] = Object.values(overviewData.overview).map(item => ({
+            id: item.symbol,
+            symbol: item.symbol,
+            name: item.symbol.replace('-USD', ''), // Simplified name
+            currentPrice: item.price,
+            score: item.score,
+            change: item.change_percent >= 0 ? Math.abs(item.change_percent) : -Math.abs(item.change_percent),
+            changePercent: item.change_percent,
+            volume: 0, // Not provided in overview, will be 0
+            marketCap: 0 // Not provided in overview, will be 0
+          }));
+          
+          setAllCryptos(cryptosFromOverview);
+          return; // Successfully loaded from new endpoint
+        }
+      } catch (overviewError) {
+        console.warn('Overview endpoint not available yet, falling back to traditional endpoint');
+      }
+      
+      // Fallback to traditional endpoint
       const data = await cryptoService.getAllCryptos();
       setAllCryptos(data);
     } catch (err) {
@@ -105,9 +155,35 @@ const CryptosView: React.FC = () => {
     setPage(0); // Reset page when filters change
   }, [allCryptos, searchTerm, sortBy, sortOrder]);
 
-  // Auto refresh every 5 minutes
-  usePolling(fetchCryptos, { 
-    interval: 5 * 60 * 1000, 
+  // Smart auto refresh every minute (but with intelligent caching)
+  usePolling(async () => {
+    try {
+      const refreshData = await cryptoOverviewService.smartRefreshCryptoOverview();
+      if (refreshData && refreshData.status === 'success') {
+        setCryptoOverview(refreshData.overview);
+        setLastUpdated(refreshData.last_updated);
+        
+        // Update allCryptos state
+        const cryptosFromOverview: Crypto[] = Object.values(refreshData.overview).map(item => ({
+          id: item.symbol,
+          symbol: item.symbol,
+          name: item.symbol.replace('-USD', ''),
+          currentPrice: item.price,
+          score: item.score,
+          change: item.change_percent >= 0 ? Math.abs(item.change_percent) : -Math.abs(item.change_percent),
+          changePercent: item.change_percent,
+          volume: 0,
+          marketCap: 0
+        }));
+        
+        setAllCryptos(cryptosFromOverview);
+      }
+    } catch (error) {
+      // Silently ignore 404 errors for new endpoints not yet available
+      console.warn('New crypto overview endpoints not available yet, using fallback:', error);
+    }
+  }, { 
+    interval: 60 * 1000, // Check every minute, but smart refresh only updates if needed
     enabled: !loading && !refreshing 
   });
 
@@ -117,7 +193,8 @@ const CryptosView: React.FC = () => {
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      await cryptoService.refreshCryptos();
+      // Force refresh by clearing localStorage and fetching new data
+      localStorage.removeItem('crypto_overview_last_update');
       await fetchCryptos();
       setSnackbarOpen(true);
     } catch (err) {
@@ -126,6 +203,16 @@ const CryptosView: React.FC = () => {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const handleMTSSAnalysis = (symbol: string) => {
+    setSelectedCrypto(symbol);
+    setMtssModalOpen(true);
+  };
+
+  const handleCloseMTSSModal = () => {
+    setMtssModalOpen(false);
+    setSelectedCrypto('');
   };
 
   const formatVolume = (volume: number) => {
@@ -168,17 +255,30 @@ const CryptosView: React.FC = () => {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">
-          Análisis de Criptomonedas
-        </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={handleRefresh}
-          disabled={refreshing || loading}
-        >
-          {refreshing ? 'Actualizando...' : 'Actualizar'}
-        </Button>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Typography variant="h4">
+            Análisis de Criptomonedas
+          </Typography>
+          <Tooltip title="MTSS Multi-Timeframe Scoring System optimizado para crypto">
+            <Chip
+              icon={<Psychology />}
+              label="MTSS CRYPTO"
+              color="primary"
+              variant="outlined"
+              size="small"
+            />
+          </Tooltip>
+        </Box>
+        <Box display="flex" gap={1}>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+          >
+            {refreshing ? 'Actualizando...' : 'Actualizar'}
+          </Button>
+        </Box>
       </Box>
 
       {/* Estadísticas Resumen */}
@@ -222,11 +322,26 @@ const CryptosView: React.FC = () => {
         <Box flex="1" minWidth="200px">
           <Card>
             <CardContent>
-              <Typography variant="h6" color="info.main">
-                {allCryptos.filter(c => c.score >= 8).length}
-              </Typography>
+              <Box display="flex" alignItems="center" gap={1}>
+                <Typography variant="h6" color="success.main">
+                  {cryptoOverview ? 
+                    Object.values(cryptoOverview).filter(c => c.action === 'buy').length :
+                    allCryptos.filter(c => c.score >= 8).length
+                  }
+                </Typography>
+                {cryptoOverview && Object.values(cryptoOverview).filter(c => c.action === 'buy').length > 0 && (
+                  <Box
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      backgroundColor: getCryptoColorHex('green'),
+                    }}
+                  />
+                )}
+              </Box>
               <Typography variant="body2" color="textSecondary">
-                Score ≥ 8.0
+                {cryptoOverview ? 'BUY Signals' : 'Score ≥ 8.0'}
               </Typography>
             </CardContent>
           </Card>
@@ -269,10 +384,27 @@ const CryptosView: React.FC = () => {
         </TextField>
       </Box>
       
-      <Typography variant="body1" color="textSecondary" sx={{ mb: 2 }}>
-        Mostrando {paginatedCryptos.length} de {filteredCryptos.length} criptomonedas
-        {searchTerm && ` (filtradas de ${allCryptos.length} total)`}
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="body1" color="textSecondary">
+          Mostrando {paginatedCryptos.length} de {filteredCryptos.length} criptomonedas
+          {searchTerm && ` (filtradas de ${allCryptos.length} total)`}
+        </Typography>
+        {lastUpdated && (
+          <Box display="flex" alignItems="center" gap={1}>
+            <Box
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                backgroundColor: 'success.main',
+              }}
+            />
+            <Typography variant="caption" color="textSecondary">
+              Actualizado: {new Date(lastUpdated).toLocaleTimeString()}
+            </Typography>
+          </Box>
+        )}
+      </Box>
 
       <TableContainer component={Paper}>
         <Table>
@@ -286,15 +418,43 @@ const CryptosView: React.FC = () => {
               <TableCell align="right">Volumen</TableCell>
               <TableCell align="right">Market Cap</TableCell>
               <TableCell align="center">Score</TableCell>
+              <TableCell align="center">MTSS</TableCell>
+              <TableCell align="center">Acciones</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {paginatedCryptos.map((crypto) => (
               <TableRow key={crypto.id} hover>
                 <TableCell>
-                  <Typography variant="body2" fontWeight="bold">
-                    {crypto.symbol}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {/* Color Indicator Dot */}
+                    {cryptoOverview && cryptoOverview[crypto.symbol] ? (
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: '50%',
+                          backgroundColor: getCryptoColorHex(cryptoOverview[crypto.symbol].color),
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                          flexShrink: 0
+                        }}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: '50%',
+                          backgroundColor: '#6b7280', // gray for fallback
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                          flexShrink: 0
+                        }}
+                      />
+                    )}
+                    <Typography variant="body2" fontWeight="bold">
+                      {crypto.symbol}
+                    </Typography>
+                  </Box>
                 </TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -345,7 +505,44 @@ const CryptosView: React.FC = () => {
                   {formatMarketCap(crypto.marketCap)}
                 </TableCell>
                 <TableCell align="center">
-                  <ScoreChip score={crypto.score} />
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'center' }}>
+                    <ScoreChip score={crypto.score} />
+                    {/* Action chip from backend */}
+                    {cryptoOverview && cryptoOverview[crypto.symbol] && (
+                      <Chip
+                        label={getCryptoActionLabel(cryptoOverview[crypto.symbol].action)}
+                        color={getCryptoActionColor(cryptoOverview[crypto.symbol].action)}
+                        size="small"
+                        variant="outlined"
+                        sx={{ 
+                          fontSize: '0.7rem',
+                          height: '20px',
+                          '& .MuiChip-label': { 
+                            px: 1 
+                          }
+                        }}
+                      />
+                    )}
+                  </Box>
+                </TableCell>
+                <TableCell align="center">
+                  <MTSSIndicator
+                    symbol={crypto.symbol}
+                    assetType="crypto"
+                    compact
+                    onClick={() => handleMTSSAnalysis(crypto.symbol)}
+                  />
+                </TableCell>
+                <TableCell align="center">
+                  <Tooltip title="Análisis MTSS avanzado">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleMTSSAnalysis(crypto.symbol)}
+                      sx={{ color: 'primary.main' }}
+                    >
+                      <Analytics />
+                    </IconButton>
+                  </Tooltip>
                 </TableCell>
               </TableRow>
             ))}
@@ -376,6 +573,13 @@ const CryptosView: React.FC = () => {
         autoHideDuration={3000}
         onClose={() => setSnackbarOpen(false)}
         message="Criptomonedas actualizadas correctamente"
+      />
+      
+      {/* MTSS Analysis Modal */}
+      <MTSSAnalysisModal
+        symbol={selectedCrypto}
+        isOpen={mtssModalOpen}
+        onClose={handleCloseMTSSModal}
       />
     </Box>
   );

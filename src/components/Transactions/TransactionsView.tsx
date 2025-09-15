@@ -38,6 +38,7 @@ import {
 import { Transaction } from '../../types';
 import { portfolioService, autotraderService } from '../../services/api';
 import { usePolling } from '../../hooks/usePolling';
+import { MTSSAnalysisModal } from '../MTSS';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -83,6 +84,10 @@ const TransactionsView: React.FC = () => {
   // Modal for transaction details
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+
+  // MTSS Analysis Modal
+  const [selectedSymbolForMTSS, setSelectedSymbolForMTSS] = useState<string>('');
+  const [mtssModalOpen, setMtssModalOpen] = useState(false);
 
   const fetchTransactions = useCallback(async () => {
     try {
@@ -219,7 +224,10 @@ const TransactionsView: React.FC = () => {
     });
   };
 
-  const formatAmount = (amount: number) => {
+  const formatAmount = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(amount)) {
+      return '$0.00';
+    }
     return amount.toLocaleString('es-ES', {
       style: 'currency',
       currency: 'USD',
@@ -299,6 +307,12 @@ const TransactionsView: React.FC = () => {
     setDetailModalOpen(true);
   };
 
+  const handleSymbolClick = (symbol: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevenir que se abra el modal de detalles
+    setSelectedSymbolForMTSS(symbol);
+    setMtssModalOpen(true);
+  };
+
   const getReasonSummary = (reason: string): string => {
     // Truncate long reasons for table display
     if (reason.length > 50) {
@@ -318,8 +332,8 @@ const TransactionsView: React.FC = () => {
             <TableCell align="right">Cantidad</TableCell>
             <TableCell align="right">Precio</TableCell>
             <TableCell align="right">Total</TableCell>
-            <TableCell align="right">Comisiones</TableCell>
             <TableCell align="right">P&L Realizado</TableCell>
+            <TableCell align="right">P&L %</TableCell>
             <TableCell align="right">Duración</TableCell>
             <TableCell align="center">Score</TableCell>
             <TableCell>Razón</TableCell>
@@ -341,7 +355,20 @@ const TransactionsView: React.FC = () => {
                 </Typography>
               </TableCell>
               <TableCell>
-                <Typography variant="body2" fontWeight="bold">
+                <Typography 
+                  variant="body2" 
+                  fontWeight="bold"
+                  sx={{ 
+                    cursor: 'pointer',
+                    color: 'primary.main',
+                    textDecoration: 'underline',
+                    '&:hover': {
+                      color: 'primary.dark',
+                    }
+                  }}
+                  onClick={(e) => handleSymbolClick(transaction.symbol, e)}
+                  title="Ver análisis MTSS"
+                >
                   {transaction.symbol}
                 </Typography>
               </TableCell>
@@ -358,7 +385,7 @@ const TransactionsView: React.FC = () => {
               </TableCell>
               <TableCell align="right">
                 <Typography variant="body2">
-                  {transaction.quantity.toLocaleString('es-ES', { maximumFractionDigits: 6 })}
+                  {(transaction.quantity || 0).toLocaleString('es-ES', { maximumFractionDigits: 6 })}
                 </Typography>
               </TableCell>
               <TableCell align="right">
@@ -375,15 +402,9 @@ const TransactionsView: React.FC = () => {
                   {formatAmount(transaction.total_amount)}
                 </Typography>
               </TableCell>
-              <TableCell align="right">
-                <Typography variant="body2" color="textSecondary">
-                  {formatAmount(transaction.fees)}
-                </Typography>
-              </TableCell>
-              
               {/* P&L Realizado */}
               <TableCell align="right">
-                {transaction.realized_pnl !== undefined ? (
+                {transaction.realized_pnl !== undefined && transaction.realized_pnl !== null ? (
                   <Typography 
                     variant="body2" 
                     fontWeight="bold"
@@ -397,10 +418,27 @@ const TransactionsView: React.FC = () => {
                   </Typography>
                 )}
               </TableCell>
+
+              {/* P&L % */}
+              <TableCell align="right">
+                {transaction.realized_pnl !== undefined && transaction.realized_pnl !== null && transaction.entry_price ? (
+                  <Typography 
+                    variant="body2" 
+                    fontWeight="bold"
+                    color={transaction.realized_pnl >= 0 ? 'success.main' : 'error.main'}
+                  >
+                    {((transaction.realized_pnl / (transaction.entry_price * (transaction.quantity || 0))) * 100).toFixed(2)}%
+                  </Typography>
+                ) : (
+                  <Typography variant="body2" color="textSecondary">
+                    -
+                  </Typography>
+                )}
+              </TableCell>
               
               {/* Duración */}
               <TableCell align="right">
-                {transaction.hold_duration_hours !== undefined ? (
+                {transaction.hold_duration_hours !== undefined && transaction.hold_duration_hours !== null ? (
                   <Typography variant="body2" color="textSecondary">
                     {transaction.hold_duration_hours < 24 
                       ? `${transaction.hold_duration_hours.toFixed(1)}h`
@@ -415,7 +453,7 @@ const TransactionsView: React.FC = () => {
               </TableCell>
               
               <TableCell align="center">
-                {transaction.score ? (
+                {transaction.score && transaction.score !== null ? (
                   <Chip
                     label={transaction.score.toFixed(1)}
                     color={getScoreColor(transaction.score)}
@@ -548,7 +586,7 @@ const TransactionsView: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" color="info.main">
-                {formatAmount(currentTransactions.reduce((sum, t) => sum + t.total_amount, 0))}
+                {formatAmount(currentTransactions.reduce((sum, t) => sum + (t.total_amount || 0), 0))}
               </Typography>
               <Typography variant="body2" color="textSecondary">
                 Volumen Total
@@ -661,10 +699,10 @@ const TransactionsView: React.FC = () => {
                   </Typography>
                   <Typography 
                     variant="h6" 
-                    color={autotraderSummary.total_realized_pnl >= 0 ? 'success.main' : 'error.main'}
+                    color={(autotraderSummary.total_realized_pnl || 0) >= 0 ? 'success.main' : 'error.main'}
                     fontWeight="bold"
                   >
-                    ${autotraderSummary.total_realized_pnl.toFixed(2)}
+                    ${(autotraderSummary.total_realized_pnl || 0).toFixed(2)}
                   </Typography>
                 </CardContent>
               </Card>
@@ -674,7 +712,7 @@ const TransactionsView: React.FC = () => {
                     Tasa de Éxito
                   </Typography>
                   <Typography variant="h6" fontWeight="bold">
-                    {(autotraderSummary.win_rate * 100).toFixed(1)}%
+                    {((autotraderSummary.win_rate || 0) * 100).toFixed(1)}%
                   </Typography>
                 </CardContent>
               </Card>
@@ -684,9 +722,9 @@ const TransactionsView: React.FC = () => {
                     Hold Promedio
                   </Typography>
                   <Typography variant="h6" fontWeight="bold">
-                    {autotraderSummary.average_hold_hours < 24 
-                      ? `${autotraderSummary.average_hold_hours.toFixed(1)}h`
-                      : `${(autotraderSummary.average_hold_hours / 24).toFixed(1)}d`
+                    {(autotraderSummary.average_hold_hours || 0) < 24 
+                      ? `${(autotraderSummary.average_hold_hours || 0).toFixed(1)}h`
+                      : `${((autotraderSummary.average_hold_hours || 0) / 24).toFixed(1)}d`
                     }
                   </Typography>
                 </CardContent>
@@ -758,14 +796,25 @@ const TransactionsView: React.FC = () => {
                   <Typography><strong>Fuente:</strong> {selectedTransaction.source}</Typography>
                 </Box>
                 <Box display="flex" gap={4}>
-                  <Typography><strong>Cantidad:</strong> {selectedTransaction.quantity.toLocaleString('es-ES', { maximumFractionDigits: 6 })}</Typography>
+                  <Typography><strong>Cantidad:</strong> {(selectedTransaction.quantity || 0).toLocaleString('es-ES', { maximumFractionDigits: 6 })}</Typography>
                   <Typography><strong>Precio:</strong> {formatAmount(selectedTransaction.price)}</Typography>
                 </Box>
                 <Box display="flex" gap={4}>
                   <Typography><strong>Total:</strong> {formatAmount(selectedTransaction.total_amount)}</Typography>
-                  <Typography><strong>Comisiones:</strong> {formatAmount(selectedTransaction.fees)}</Typography>
+                  {selectedTransaction.realized_pnl !== undefined && selectedTransaction.realized_pnl !== null && (
+                    <Typography><strong>P&L Realizado:</strong> 
+                      <Typography 
+                        component="span" 
+                        color={selectedTransaction.realized_pnl >= 0 ? 'success.main' : 'error.main'}
+                        fontWeight="bold"
+                        sx={{ ml: 1 }}
+                      >
+                        {selectedTransaction.realized_pnl >= 0 ? '+' : ''}{formatAmount(selectedTransaction.realized_pnl)}
+                      </Typography>
+                    </Typography>
+                  )}
                 </Box>
-                {selectedTransaction.score && (
+                {selectedTransaction.score && selectedTransaction.score !== null ? (
                   <Typography><strong>Score en el momento:</strong> 
                     <Chip 
                       label={selectedTransaction.score.toFixed(1)} 
@@ -779,7 +828,7 @@ const TransactionsView: React.FC = () => {
                         : 'Score alto ideal para LONG (> 6.0)'}
                     </Typography>
                   </Typography>
-                )}
+                ) : null}
               </Box>
 
               <Typography variant="h6" gutterBottom>
@@ -805,6 +854,13 @@ const TransactionsView: React.FC = () => {
         autoHideDuration={4000}
         onClose={() => setSnackbarOpen(false)}
         message="Transacciones actualizadas correctamente"
+      />
+
+      {/* MTSS Analysis Modal */}
+      <MTSSAnalysisModal
+        symbol={selectedSymbolForMTSS}
+        isOpen={mtssModalOpen}
+        onClose={() => setMtssModalOpen(false)}
       />
     </Box>
   );

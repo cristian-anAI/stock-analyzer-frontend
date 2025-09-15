@@ -323,7 +323,7 @@ const ManualPositionsView: React.FC = () => {
                   />
                 </TableCell>
                 <TableCell align="right">{position.quantity || 0}</TableCell>
-                <TableCell align="right">${formatPrice(position.entryPrice || 0, position.type)}</TableCell>
+                <TableCell align="right">${(position.entryPrice || 0).toFixed(2)}</TableCell>
                 <TableCell align="right">${formatPrice(position.currentPrice || 0, position.type)}</TableCell>
                 <TableCell align="right">${(position.value || 0).toFixed(2)}</TableCell>
                 <TableCell align="right">

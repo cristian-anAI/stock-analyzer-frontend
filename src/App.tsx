@@ -9,6 +9,7 @@ import CryptosView from './components/Cryptos/CryptosView';
 import PositionsView from './components/Positions/PositionsView';
 import ManualPositionsView from './components/ManualPositions/ManualPositionsView';
 import TransactionsView from './components/Transactions/TransactionsView';
+import { MTSSCryptoView } from './components/MTSS';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             <Route path="/positions" element={<PositionsView />} />
             <Route path="/manual-positions" element={<ManualPositionsView />} />
             <Route path="/transactions" element={<TransactionsView />} />
+            <Route path="/mtss-crypto" element={<MTSSCryptoView />} />
           </Routes>
         </Layout>
       </Router>
