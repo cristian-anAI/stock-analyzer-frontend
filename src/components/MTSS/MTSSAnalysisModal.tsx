@@ -158,7 +158,8 @@ const MTSSAnalysisModal: React.FC<MTSSAnalysisModalProps> = ({
     try {
       const fullSymbol = getCryptoSymbolForAPI(symbol); // BTC -> BTC-USD
       const assetType = detectAssetType(fullSymbol);
-      const baseUrl = `http://localhost:8000/api/v1/unified-scoring/analyze/${fullSymbol}?asset_type=${assetType}`;
+      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      const baseUrl = `${apiBaseUrl}/api/v1/unified-scoring/analyze/${fullSymbol}?asset_type=${assetType}`;
       const url = forceAnalysisParam ? `${baseUrl}&force_analysis=true` : baseUrl;
       
       const response = await fetch(url);

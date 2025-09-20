@@ -176,8 +176,9 @@ const StocksView: React.FC = () => {
     console.log('🚀 Loading MTSS data using bulk endpoint...');
     
     try {
+      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
       const response = await fetch(
-        'http://localhost:8000/api/v1/mtss-bulk/scores?limit=500&min_score=0'
+        `${apiBaseUrl}/api/v1/mtss-bulk/scores?limit=500&min_score=0`
       );
       
       if (!response.ok) {
@@ -229,8 +230,9 @@ const StocksView: React.FC = () => {
     console.log(`🔄 Loading MTSS data for ${symbols.length} specific stocks...`);
     
     try {
+      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
       const response = await fetch(
-        'http://localhost:8000/api/v1/mtss-bulk/scores?limit=500&min_score=0'
+        `${apiBaseUrl}/api/v1/mtss-bulk/scores?limit=500&min_score=0`
       );
       
       if (!response.ok) throw new Error(`Bulk endpoint failed: ${response.status}`);
