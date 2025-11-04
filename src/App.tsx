@@ -10,6 +10,8 @@ import PositionsView from './components/Positions/PositionsView';
 import ManualPositionsView from './components/ManualPositions/ManualPositionsView';
 import TransactionsView from './components/Transactions/TransactionsView';
 import { MTSSCryptoView } from './components/MTSS';
+import BoxStrategyView from './components/BoxStrategy/BoxStrategyView';
+import { PupupuV2Dashboard } from './components/PupupuV2';
 
 function App() {
   return (
@@ -25,6 +27,8 @@ function App() {
             <Route path="/manual-positions" element={<ManualPositionsView />} />
             <Route path="/transactions" element={<TransactionsView />} />
             <Route path="/mtss-crypto" element={<MTSSCryptoView />} />
+            <Route path="/box" element={<BoxStrategyView />} />
+            <Route path="/pupupu" element={<PupupuV2Dashboard />} />
           </Routes>
         </Layout>
       </Router>

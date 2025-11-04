@@ -1,25 +1,33 @@
 import axios from 'axios';
-import { 
-  Stock, 
-  Crypto, 
-  Position, 
-  ManualPosition, 
+import {
+  Stock,
+  Crypto,
+  Position,
+  ManualPosition,
   Transaction,
-  PortfolioOverview, 
-  PortfolioPositionsResponse, 
-  TransactionsResponse, 
-  PerformanceResponse, 
+  PortfolioOverview,
+  PortfolioPositionsResponse,
+  TransactionsResponse,
+  PerformanceResponse,
   ComparisonAnalysis,
   PositionAnalysis,
   AlertConfig,
   Alert,
   detectAssetType,
   CryptoOverviewResponse,
-  getCryptoSymbolForAPI
+  getCryptoSymbolForAPI,
+  PupupuV3CurrentAnalysis,
+  PupupuV3RecentSignalsResponse,
+  PupupuV3ActiveTradesResponse,
+  PupupuV3PendingTradesResponse,
+  PupupuV3Statistics,
+  PupupuV3BacktestComparison,
+  PupupuV3SystemStatus,
 } from '../types';
 import { cacheService, CACHE_KEYS } from './cache';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const PUPUPUV3_STANDALONE_URL = process.env.REACT_APP_PUPUPUV3_URL || 'http://localhost:8001';
 
 // Helper function for cached API requests
 async function cachedRequest<T>(
@@ -125,6 +133,39 @@ const api = axios.create({
   },
   timeout: 60000, // 60 segundos para datos que pueden tardar en procesar
 });
+
+// Standalone PupupuV3 API client (fallback)
+const pupupuV3StandaloneApi = axios.create({
+  baseURL: `${PUPUPUV3_STANDALONE_URL}/api/v1`,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 10000, // 10 segundos
+});
+
+// Helper function to try main API first, then fallback to standalone
+async function pupupuV3Request<T>(
+  mainApiCall: () => Promise<T>,
+  standaloneEndpoint: string,
+  params?: any
+): Promise<T> {
+  try {
+    // Try main API first
+    return await mainApiCall();
+  } catch (error) {
+    console.warn('Main API failed, trying standalone PupupuV3 API on port 8001...', error);
+
+    try {
+      // Fallback to standalone API
+      const response = await pupupuV3StandaloneApi.get(standaloneEndpoint, { params });
+      console.log('✅ Standalone PupupuV3 API success');
+      return response.data;
+    } catch (standaloneError) {
+      console.error('Both APIs failed:', standaloneError);
+      throw error; // Throw original error
+    }
+  }
+}
 
 // API error handler
 const handleApiError = (error: any) => {
@@ -712,6 +753,303 @@ export const cryptoMTSSService = {
       300000 // 5 minutes cache for batch analysis
     );
   }
+};
+
+// Box Strategy Service
+export const boxStrategyService = {
+  getDashboard: async (mlVersion = 1): Promise<any> => {
+    const cacheKey = `box-strategy:dashboard:v${mlVersion}`;
+
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/box-strategy/dashboard?ml_version=${mlVersion}`);
+        return response.data;
+      },
+      60000 // 1 minute cache for active trades monitoring
+    );
+  },
+
+  getTradeable: async (minConfidence: 'HIGH' | 'MEDIUM' | 'LOW' = 'HIGH'): Promise<any> => {
+    const cacheKey = `box-strategy:tradeable:${minConfidence}`;
+
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/box-strategy/tradeable?min_confidence=${minConfidence}`);
+        return response.data;
+      },
+      300000 // 5 minutes cache
+    );
+  },
+
+  getMarketDetail: async (marketCode: string): Promise<any> => {
+    const cacheKey = `box-strategy:market:${marketCode}`;
+
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get(`/box-strategy/market/${marketCode}`);
+        return response.data;
+      },
+      300000 // 5 minutes cache
+    );
+  },
+
+  // NEW: Get active trades
+  getActiveTrades: async (): Promise<any> => {
+    const cacheKey = 'box-strategy:active-trades';
+
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        const response = await api.get('/box-strategy/active-trades');
+        return response.data;
+      },
+      55000 // 55 seconds cache (slightly less than polling interval)
+    );
+  },
+
+  refreshBoxStrategy: async (): Promise<void> => {
+    // Invalidate all box strategy cache when refreshing
+    cacheService.invalidatePattern('box-strategy:');
+  },
+};
+
+// PupupuV2 Bot Service
+export const pupupuV2Service = {
+  // Main endpoint - polled every 60 seconds
+  getCurrentAnalysis: async (accountBalance = 10000, riskPerTrade = 0.02): Promise<any> => {
+    return cachedRequest(
+      `pupupuv2:current-analysis:${accountBalance}:${riskPerTrade}`,
+      async () => {
+        const response = await api.get(
+          `/pupupuv2/current-analysis?account_balance=${accountBalance}&risk_per_trade=${riskPerTrade}`
+        );
+        return response.data;
+      },
+      55000 // 55 seconds cache (slightly less than polling interval)
+    );
+  },
+
+  // Signal history
+  getLatestSignals: async (limit = 10): Promise<any> => {
+    return cachedRequest(
+      `pupupuv2:signals:latest:${limit}`,
+      async () => {
+        const response = await api.get(`/pupupuv2/signals/latest?limit=${limit}`);
+        return response.data;
+      },
+      120000 // 2 minutes cache
+    );
+  },
+
+  // Active pivot levels
+  getActiveLevels: async (): Promise<any> => {
+    return cachedRequest(
+      'pupupuv2:active-levels',
+      async () => {
+        const response = await api.get('/pupupuv2/active-levels');
+        return response.data;
+      },
+      60000 // 1 minute cache
+    );
+  },
+
+  // Volume profile
+  getVolumeProfile: async (): Promise<any> => {
+    return cachedRequest(
+      'pupupuv2:volume-profile',
+      async () => {
+        const response = await api.get('/pupupuv2/volume-profile');
+        return response.data;
+      },
+      120000 // 2 minutes cache
+    );
+  },
+
+  // Market context (filters)
+  getMarketContext: async (): Promise<any> => {
+    return cachedRequest(
+      'pupupuv2:market-context',
+      async () => {
+        const response = await api.get('/pupupuv2/market-context');
+        return response.data;
+      },
+      60000 // 1 minute cache
+    );
+  },
+
+  // Backtest summary
+  getBacktestSummary: async (): Promise<any> => {
+    return cachedRequest(
+      'pupupuv2:backtest-summary',
+      async () => {
+        const response = await api.get('/pupupuv2/backtest-summary');
+        return response.data;
+      },
+      600000 // 10 minutes cache (backtest results don't change often)
+    );
+  },
+
+  // Bot statistics
+  getStatistics: async (): Promise<any> => {
+    return cachedRequest(
+      'pupupuv2:statistics',
+      async () => {
+        const response = await api.get('/pupupuv2/statistics');
+        return response.data;
+      },
+      120000 // 2 minutes cache
+    );
+  },
+
+  // Start monitoring
+  startMonitoring: async (): Promise<{ status: string; message: string }> => {
+    // Invalidate caches when starting monitoring
+    cacheService.invalidatePattern('pupupuv2:');
+
+    const response = await api.post('/pupupuv2/start-monitoring');
+    return response.data;
+  },
+
+  // Stop monitoring
+  stopMonitoring: async (): Promise<{ status: string; message: string }> => {
+    // Invalidate caches when stopping monitoring
+    cacheService.invalidatePattern('pupupuv2:');
+
+    const response = await api.post('/pupupuv2/stop-monitoring');
+    return response.data;
+  },
+
+  // Health check
+  healthCheck: async (): Promise<{ status: string; service: string }> => {
+    // Don't cache health checks
+    const response = await api.get('/pupupuv2/health');
+    return response.data;
+  },
+};
+
+// ============================================================================
+// PupupuV3 Service - 1-minute Scalping Strategy with ML Dynamic Take Profits
+// ============================================================================
+
+export const pupupuV3Service = {
+  // Get current analysis with signal and ML predictions
+  getCurrentAnalysis: async (symbol: string = 'BTC/USDT'): Promise<PupupuV3CurrentAnalysis> => {
+    return cachedRequest(
+      `pupupuv3:current-analysis:${symbol}`,
+      async () => {
+        return pupupuV3Request(
+          async () => {
+            const response = await api.get(`/pupupuv3/current-analysis`, { params: { symbol } });
+            return response.data;
+          },
+          '/pupupuv3/current-analysis',
+          { symbol }
+        );
+      },
+      60000 // 1 minute cache for real-time data
+    );
+  },
+
+  // Get recent signals
+  getRecentSignals: async (limit: number = 50): Promise<PupupuV3RecentSignalsResponse> => {
+    return cachedRequest(
+      `pupupuv3:recent-signals:${limit}`,
+      async () => {
+        return pupupuV3Request(
+          async () => {
+            const response = await api.get(`/pupupuv3/signals/recent`, { params: { limit } });
+            return response.data;
+          },
+          '/pupupuv3/signals/recent',
+          { limit }
+        );
+      },
+      30000 // 30 seconds cache
+    );
+  },
+
+  // Get pending trades (limit orders waiting)
+  getPendingTrades: async (): Promise<PupupuV3PendingTradesResponse> => {
+    // Don't cache pending trades - need real-time updates
+    return pupupuV3Request(
+      async () => {
+        const response = await api.get(`/pupupuv3/trades/pending`);
+        return response.data;
+      },
+      '/pupupuv3/trades/pending',
+      {}
+    );
+  },
+
+  // Get active trades
+  getActiveTrades: async (): Promise<PupupuV3ActiveTradesResponse> => {
+    // Don't cache active trades - need real-time updates
+    return pupupuV3Request(
+      async () => {
+        const response = await api.get(`/pupupuv3/trades/active`);
+        return response.data;
+      },
+      '/pupupuv3/trades/active',
+      {}
+    );
+  },
+
+  // Get statistics
+  getStatistics: async (days: number = 30): Promise<PupupuV3Statistics> => {
+    return cachedRequest(
+      `pupupuv3:statistics:${days}`,
+      async () => {
+        return pupupuV3Request(
+          async () => {
+            const response = await api.get(`/pupupuv3/statistics`, { params: { days } });
+            return response.data;
+          },
+          '/pupupuv3/statistics',
+          { days }
+        );
+      },
+      120000 // 2 minutes cache
+    );
+  },
+
+  // Get backtest results
+  getBacktestResults: async (): Promise<PupupuV3BacktestComparison> => {
+    return cachedRequest(
+      'pupupuv3:backtest-results',
+      async () => {
+        return pupupuV3Request(
+          async () => {
+            const response = await api.get(`/pupupuv3/backtest-results`);
+            return response.data;
+          },
+          '/pupupuv3/backtest-results',
+          {}
+        );
+      },
+      600000 // 10 minutes cache (backtest results don't change often)
+    );
+  },
+
+  // Get system status
+  getSystemStatus: async (): Promise<PupupuV3SystemStatus> => {
+    // Don't cache system status - need real-time info
+    return pupupuV3Request(
+      async () => {
+        const response = await api.get(`/pupupuv3/status`);
+        return response.data;
+      },
+      '/pupupuv3/status',
+      {}
+    );
+  },
+
+  // Invalidate all PupupuV3 caches
+  invalidateCache: (): void => {
+    cacheService.invalidatePattern('pupupuv3:');
+  },
 };
 
 export default api;

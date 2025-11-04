@@ -597,3 +597,590 @@ export interface CryptoOverviewResponse {
   overview: Record<string, CryptoOverviewItem>;
   last_updated: string;
 }
+
+// Box Strategy Types
+export type BoxDirection = 'LONG' | 'SHORT';
+export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+export type BoxRecommendation = 'TRADE' | 'REDUCE_SIZE' | 'SKIP';
+export type BoxStatus = 'BOX_PERIOD' | 'POST_BOX' | 'PENDING';
+
+export interface BoxSetup {
+  direction: BoxDirection;
+  entry_price: number;
+  entry_time?: string; // ISO 8601 timestamp
+  breakout_candle_time?: string; // ISO 8601 timestamp
+  stop_loss: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  current_price: number;
+  status: BoxStatus;
+}
+
+export interface MLPrediction {
+  win_probability: number;
+  confidence_level: ConfidenceLevel;
+  recommendation: BoxRecommendation;
+  position_size_multiplier: number;
+  expected_return?: number;
+  risk_score?: number;
+}
+
+export interface BoxStrategyMarket {
+  market: string;
+  name: string;
+  box_setup: BoxSetup;
+  ml_prediction: MLPrediction;
+  last_updated: string;
+}
+
+export interface BoxStrategySummary {
+  total_markets: number;
+  breakouts: number;
+  high_confidence: number;
+  medium_confidence?: number;
+  low_confidence?: number;
+  avg_win_probability?: number;
+}
+
+export interface BoxStrategyDashboard {
+  summary: BoxStrategySummary;
+  high_confidence_setups: BoxStrategyMarket[];
+  all_breakouts: BoxStrategyMarket[];
+  last_updated: string;
+}
+
+export interface BoxStrategyTradeableResponse {
+  setups: BoxStrategyMarket[];
+  count: number;
+  filter_applied: string;
+}
+
+// Utility functions for Box Strategy
+export const getConfidenceColor = (confidence?: ConfidenceLevel): 'success' | 'warning' | 'error' => {
+  if (!confidence) return 'warning';
+  switch (confidence) {
+    case 'HIGH':
+      return 'success';
+    case 'MEDIUM':
+      return 'warning';
+    case 'LOW':
+      return 'error';
+    default:
+      return 'warning';
+  }
+};
+
+export const getDirectionColor = (direction?: BoxDirection): 'info' | 'warning' => {
+  if (!direction) return 'info';
+  return direction === 'LONG' ? 'info' : 'warning';
+};
+
+export const getRecommendationColor = (recommendation?: BoxRecommendation): 'success' | 'warning' | 'error' => {
+  if (!recommendation) return 'warning';
+  switch (recommendation) {
+    case 'TRADE':
+      return 'success';
+    case 'REDUCE_SIZE':
+      return 'warning';
+    case 'SKIP':
+      return 'error';
+    default:
+      return 'warning';
+  }
+};
+
+export const getBoxStatusColor = (status?: BoxStatus | string): 'success' | 'info' | 'default' => {
+  if (!status) return 'default';
+  switch (status) {
+    case 'BOX_PERIOD':
+      return 'info';
+    case 'POST_BOX':
+      return 'success';
+    case 'PENDING':
+      return 'default';
+    default:
+      return 'default';
+  }
+};
+
+// Active Box Trades Types
+export interface ActiveBoxTrade {
+  market: string;
+  direction: 'LONG' | 'SHORT';
+  entry_price: number;
+  entry_time: string;
+  stop_loss: number;
+  current_stop_loss: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  box_high: number;
+  box_low: number;
+  box_range: number;
+  risk_points: number;
+  ml_confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  ml_win_probability: number;
+  tp1_hit: boolean;
+  stop_moved_to_breakeven: boolean;
+  breakout_key: string;
+}
+
+export interface ActiveTradesSummary {
+  market: string;
+  direction: string;
+  entry_price: number;
+  entry_time: string;
+  stop_loss: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  risk_points: number;
+  ml_confidence: string;
+  ml_win_probability: number;
+  tp1_hit: boolean;
+  stop_moved_to_breakeven: boolean;
+}
+
+export interface BoxStrategyDashboardExtended extends BoxStrategyDashboard {
+  summary: BoxStrategySummary & {
+    active_trades_count?: number;
+    tp1_achieved_count?: number;
+    stop_moved_to_breakeven_count?: number;
+  };
+  active_trades_summary?: ActiveTradesSummary[];
+}
+
+export interface ActiveTradesResponse {
+  timestamp: string;
+  active_trades_count: number;
+  trades: ActiveBoxTrade[];
+}
+
+// Utility functions for Box Strategy active trades
+export const getMLConfidenceColor = (confidence?: ConfidenceLevel): 'success' | 'warning' | 'error' => {
+  if (!confidence) return 'warning';
+  switch (confidence) {
+    case 'HIGH':
+      return 'success';
+    case 'MEDIUM':
+      return 'warning';
+    case 'LOW':
+      return 'error';
+    default:
+      return 'warning';
+  }
+};
+
+export const getMLConfidenceEmoji = (confidence?: ConfidenceLevel): string => {
+  if (!confidence) return '⚡';
+  switch (confidence) {
+    case 'HIGH':
+      return '🎯';
+    case 'MEDIUM':
+      return '⚡';
+    case 'LOW':
+      return '⚠️';
+    default:
+      return '⚡';
+  }
+};
+
+export const getTradeDirectionEmoji = (direction?: BoxDirection): string => {
+  if (!direction) return '●';
+  return direction === 'LONG' ? '🟢' : '🔴';
+};
+
+// PupupuV2 Bot Types
+export type TradeDirection = 'LONG' | 'SHORT';
+export type PricePosition = 'above' | 'below';
+export type HTTrend = 'bullish' | 'bearish' | 'neutral';
+
+export interface TradeSignal {
+  direction: TradeDirection;
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
+  confidence: number;
+  reason: string;
+  position_size_usd: number;
+  risk_usd: number;
+  timestamp?: string;
+}
+
+export interface PivotLevel {
+  price: number;
+  strength: number;
+  touches: number;
+  age_candles: number;
+  distance_pct: number;
+}
+
+export interface VolumeProfileData {
+  poc: number;
+  vah: number;
+  val: number;
+  hvn_count: number;
+  lvn_count: number;
+  distribution?: Record<string, number>;
+}
+
+export interface VolumeProfileSet {
+  vp_corto: VolumeProfileData;
+  vp_medio: VolumeProfileData;
+  vp_largo?: VolumeProfileData;
+}
+
+export interface MarketFilters {
+  pass_all: boolean;
+  liquidity_ok: boolean;
+  volatility_ok: boolean;
+  fundamental_event: boolean;
+  ht_trend: HTTrend;
+  description?: string;
+}
+
+export interface CurrentAnalysis {
+  timestamp: string;
+  current_price: number;
+  current_ema: number;
+  price_vs_ema: PricePosition;
+  distance_from_ema_pct: number;
+  signal: TradeSignal | null;
+  active_resistances: PivotLevel[];
+  active_supports: PivotLevel[];
+  volume_profile: VolumeProfileSet;
+  market_filters: MarketFilters;
+  metadata: {
+    total_resistances: number;
+    total_supports: number;
+  };
+}
+
+export interface SignalHistoryItem {
+  timestamp: string;
+  direction: TradeDirection;
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
+  confidence: number;
+  reason: string;
+  pivot_touch_price?: number;
+}
+
+export interface BacktestSummary {
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  total_pnl: number;
+  profit_factor: number;
+  max_drawdown: number;
+  avg_risk_reward: number;
+  avg_win: number;
+  avg_loss: number;
+  sharpe_ratio?: number;
+  period?: string;
+}
+
+export interface BotStatistics {
+  total_signals: number;
+  long_signals: number;
+  short_signals: number;
+  avg_confidence: number;
+  monitoring_active: boolean;
+  last_signal_time?: string;
+}
+
+export interface ActiveLevelsResponse {
+  timestamp: string;
+  current_price: number;
+  resistances: PivotLevel[];
+  supports: PivotLevel[];
+  nearest_resistance: PivotLevel | null;
+  nearest_support: PivotLevel | null;
+}
+
+export interface VolumeProfileResponse {
+  timestamp: string;
+  current_price: number;
+  volume_profile: VolumeProfileSet;
+}
+
+export interface MarketContextResponse {
+  timestamp: string;
+  filters: MarketFilters;
+  recommendation: 'SAFE TO TRADE' | 'DO NOT TRADE';
+  reason: string;
+}
+
+// Utility functions for PupupuV2
+export const getConfidenceColorPupupu = (confidence: number): 'success' | 'warning' | 'error' => {
+  if (confidence > 80) return 'success';
+  if (confidence >= 60) return 'warning';
+  return 'error';
+};
+
+export const getPivotStrengthColor = (strength: number): 'success' | 'warning' | 'default' => {
+  if (strength > 0.8) return 'success';
+  if (strength >= 0.6) return 'warning';
+  return 'default';
+};
+
+export const getDirectionColorPupupu = (direction: TradeDirection): 'success' | 'error' => {
+  return direction === 'LONG' ? 'success' : 'error';
+};
+
+export const getDirectionIcon = (direction: TradeDirection): string => {
+  return direction === 'LONG' ? '⬆️' : '⬇️';
+};
+
+export const formatPriceUSD = (price: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(price);
+};
+
+export const calculateRiskReward = (entry: number, stopLoss: number, takeProfit: number, direction: TradeDirection): number => {
+  const risk = Math.abs(entry - stopLoss);
+  const reward = Math.abs(takeProfit - entry);
+
+  if (risk === 0) return 0;
+  return reward / risk;
+};
+
+// ============================================================================
+// PupupuV3 Types - 1-minute Scalping Strategy with ML Dynamic Take Profits
+// ============================================================================
+
+export interface PupupuV3PivotLevel {
+  price: number;
+  strength: number;
+  touches: number;
+  bars_since: number;
+  is_active?: boolean;
+}
+
+export interface PupupuV3Indicators {
+  ema_15: number;
+  ema_distance_pct: number;
+  ema_above_price: boolean;
+  vwap: number;
+  vwap_distance_pct: number;
+  vwap_above_price: boolean;
+}
+
+export interface PupupuV3AllPivots {
+  all_resistances: PupupuV3PivotLevel[];
+  all_supports: PupupuV3PivotLevel[];
+}
+
+export interface PupupuV3VolumeProfile {
+  poc: number;
+  vah: number;
+  val: number;
+  in_value_area: boolean;
+  near_hvn: boolean;
+}
+
+export interface PupupuV3SignalConditions {
+  price_near_resistance: boolean;
+  closest_resistance_distance: number;
+  closest_resistance_price: number | null;
+  price_near_support: boolean;
+  closest_support_distance: number;
+  closest_support_price: number | null;
+  ema_above_price: boolean;
+  ema_distance: number;
+  ema_distance_pct: number;
+  vwap_above_price: boolean;
+  vwap_distance: number;
+  vwap_distance_pct: number;
+  in_value_area: boolean;
+  near_hvn: boolean;
+}
+
+export interface PupupuV3Signal {
+  direction: 'LONG' | 'SHORT';
+  entry_price: number;
+  stop_loss: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  position_size: number;
+  risk_amount: number;
+  timestamp: number;
+  datetime: string;
+  pivot_touch: string;
+  ema_test: string;
+  vwap_aligned: string;
+  volume_profile_support: string;
+}
+
+export interface PupupuV3TPTarget {
+  ratio: number;
+  price: number;
+  probability: number;
+  timeframe: string;
+  exit_percentage: number;
+}
+
+export interface PupupuV3MLPrediction {
+  tp2_ratio: number;
+  tp2_price: number;
+  tp2_probability: number;
+  tp2_timeframe: string;
+  tp3_ratio: number;
+  tp3_price: number;
+  tp3_probability: number;
+  tp3_timeframe: string;
+  confidence_score: number;
+}
+
+export interface PupupuV3CurrentAnalysis {
+  symbol: string;
+  timestamp: number;
+  datetime: string;
+  current_price: number;
+  indicators?: PupupuV3Indicators;
+  active_resistances: PupupuV3PivotLevel[];
+  active_supports: PupupuV3PivotLevel[];
+  all_pivots?: PupupuV3AllPivots;
+  volume_profile: PupupuV3VolumeProfile;
+  signal: PupupuV3Signal | null;
+  signal_conditions?: PupupuV3SignalConditions | null;
+  ml_prediction: PupupuV3MLPrediction | null;
+  ml_model_active: boolean;
+}
+
+export interface PupupuV3SignalHistory {
+  id: number;
+  timestamp: string;
+  symbol: string;
+  type: 'LONG' | 'SHORT';
+  entry: number;
+  stop_loss: number;
+  tp1: number;
+  status: 'active' | 'closed' | 'stopped_out';
+  outcome?: 'win' | 'loss';
+  pnl?: number;
+}
+
+export interface PupupuV3ActiveTrade {
+  trade_id: string;
+  symbol: string;
+  direction: 'LONG' | 'SHORT';
+  state: 'PENDING' | 'ACTIVE' | 'TP1_HIT' | 'RUNNER' | 'CLOSED';
+  entry_price: number;
+  current_price?: number;
+  current_stop_loss: number;
+  take_profit_1: number;
+  take_profit_2?: number;
+  take_profit_3?: number;
+  unrealized_pnl?: number;
+  position_remaining?: number; // Percentage: 100, 50, 20, 0
+  created_at?: string;
+}
+
+export interface PupupuV3PendingTrade {
+  trade_id: string;
+  symbol: string;
+  direction: 'LONG' | 'SHORT';
+  state: 'PENDING';
+  entry_price: number;
+  stop_loss: number;
+  take_profit_1: number;
+  take_profit_2?: number;
+  take_profit_3?: number;
+  created_at: string;
+}
+
+export interface PupupuV3Statistics {
+  period_days: number;
+  signals_total: number;
+  signals_valid: number;
+  trades_total: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  total_pnl: number;
+  avg_win: number;
+  avg_loss: number;
+  profit_factor: number;
+  expectancy: number;
+  no_test_count: number;
+  max_drawdown: number;
+}
+
+export interface PupupuV3BacktestMetrics {
+  total_pnl: number;
+  win_rate: number;
+  avg_win: number;
+  avg_loss: number;
+  profit_factor: number;
+  expectancy: number;
+}
+
+export interface PupupuV3ImprovementMetrics {
+  pnl_change: number;
+  pnl_percentage: number;
+  win_rate_change: number;
+  avg_win_improvement: number;
+}
+
+export interface PupupuV3BacktestComparison {
+  comparison: {
+    phase1_tp1_only: PupupuV3BacktestMetrics;
+    phase3_ml_dynamic: PupupuV3BacktestMetrics;
+    improvement: PupupuV3ImprovementMetrics;
+  };
+  test_period: string;
+  symbol: string;
+  total_signals: number;
+}
+
+export interface PupupuV3RecentSignalsResponse {
+  signals: PupupuV3SignalHistory[];
+  total: number;
+}
+
+export interface PupupuV3ActiveTradesResponse {
+  active_trades: PupupuV3ActiveTrade[];
+}
+
+export interface PupupuV3PendingTradesResponse {
+  pending_trades: PupupuV3PendingTrade[];
+}
+
+export interface PupupuV3SystemStatus {
+  status: 'running' | 'stopped' | 'error';
+  ml_model_loaded: boolean;
+  ml_model_version: string;
+  last_analysis: string;
+  active_trades_count: number;
+  data_cache_status: 'healthy' | 'degraded' | 'error';
+}
+
+// Utility functions for PupupuV3
+export const getPupupuV3DirectionColor = (direction: 'LONG' | 'SHORT'): 'success' | 'error' => {
+  return direction === 'LONG' ? 'success' : 'error';
+};
+
+export const getPupupuV3DirectionEmoji = (direction: 'LONG' | 'SHORT'): string => {
+  return direction === 'LONG' ? '🟢' : '🔴';
+};
+
+export const getPupupuV3ProbabilityColor = (probability: number): 'success' | 'warning' | 'error' => {
+  if (probability >= 0.70) return 'success';
+  if (probability >= 0.60) return 'warning';
+  return 'error';
+};
+
+export const getPupupuV3ConfidenceColor = (confidence: number): 'success' | 'warning' | 'error' => {
+  if (confidence >= 0.80) return 'success';
+  if (confidence >= 0.65) return 'warning';
+  return 'error';
+};

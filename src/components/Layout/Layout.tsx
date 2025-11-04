@@ -17,6 +17,8 @@ import {
   Edit as ManualIcon,
   History as TransactionsIcon,
   Psychology as MTSSIcon,
+  ViewInAr as BoxIcon,
+  SmartToy as BotIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ApiStatus from '../Common/ApiStatus';
@@ -32,6 +34,8 @@ const menuItems = [
   { text: 'Stocks', path: '/stocks', icon: <StocksIcon /> },
   { text: 'Cryptos', path: '/cryptos', icon: <CryptoIcon /> },
   { text: 'MTSS Crypto Strategy', path: '/mtss-crypto', icon: <MTSSIcon /> },
+  { text: 'Box Strategy (Nasdaq)', path: '/box', icon: <BoxIcon /> },
+  { text: 'Pupupu BTC (5min/1min)', path: '/pupupu', icon: <BotIcon /> },
   { text: 'Posiciones Autotrader', path: '/positions', icon: <PositionsIcon /> },
   { text: 'Posiciones Manuales', path: '/manual-positions', icon: <ManualIcon /> },
   { text: 'Historial Transacciones', path: '/transactions', icon: <TransactionsIcon /> },
