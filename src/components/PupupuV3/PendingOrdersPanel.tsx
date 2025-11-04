@@ -20,8 +20,15 @@ export const PendingOrdersPanel: React.FC<PendingOrdersPanelProps> = ({
 
   const PendingOrderCard = ({ trade }: { trade: PupupuV3PendingTrade }) => {
     const isLong = trade.direction === 'LONG';
-    const distance = Math.abs(trade.entry_price - currentPrice);
-    const distancePct = (distance / currentPrice) * 100;
+
+    // Add safety checks for undefined values
+    const entryPrice = trade.entry_price ?? 0;
+    const stopLoss = trade.stop_loss ?? 0;
+    const takeProfit1 = trade.take_profit_1 ?? 0;
+    const safeCurrentPrice = currentPrice ?? 0;
+
+    const distance = Math.abs(entryPrice - safeCurrentPrice);
+    const distancePct = safeCurrentPrice !== 0 ? (distance / safeCurrentPrice) * 100 : 0;
     const borderColor = isLong ? '#ffa726' : '#ef5350'; // Orange for LONG, Red for SHORT
 
     return (
@@ -60,7 +67,7 @@ export const PendingOrdersPanel: React.FC<PendingOrdersPanelProps> = ({
             Entry Price (Limit Order)
           </Typography>
           <Typography variant="h6" fontWeight="bold">
-            ${trade.entry_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ${entryPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Distance: ${distance.toFixed(2)} ({distancePct.toFixed(3)}%)
@@ -76,7 +83,7 @@ export const PendingOrdersPanel: React.FC<PendingOrdersPanelProps> = ({
               Stop Loss
             </Typography>
             <Typography variant="body2" fontWeight="bold" sx={{ color: 'error.main' }}>
-              ${trade.stop_loss.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ${stopLoss.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Typography>
           </Box>
           <Box textAlign="right">
@@ -84,7 +91,7 @@ export const PendingOrdersPanel: React.FC<PendingOrdersPanelProps> = ({
               TP1
             </Typography>
             <Typography variant="body2" fontWeight="bold" sx={{ color: 'success.main' }}>
-              ${trade.take_profit_1.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ${takeProfit1.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Typography>
           </Box>
         </Box>
@@ -96,7 +103,7 @@ export const PendingOrdersPanel: React.FC<PendingOrdersPanelProps> = ({
               ML Dynamic Targets:
             </Typography>
             <Box display="flex" gap={1}>
-              {trade.take_profit_2 && (
+              {trade.take_profit_2 != null && (
                 <Chip
                   label={`TP2: $${trade.take_profit_2.toLocaleString()}`}
                   size="small"
@@ -104,7 +111,7 @@ export const PendingOrdersPanel: React.FC<PendingOrdersPanelProps> = ({
                   sx={{ fontSize: '0.7rem' }}
                 />
               )}
-              {trade.take_profit_3 && (
+              {trade.take_profit_3 != null && (
                 <Chip
                   label={`TP3: $${trade.take_profit_3.toLocaleString()}`}
                   size="small"
@@ -144,7 +151,7 @@ export const PendingOrdersPanel: React.FC<PendingOrdersPanelProps> = ({
         </Box>
 
         <Typography variant="body2" color="text.secondary" mb={2}>
-          Current Price: <strong>${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
+          Current Price: <strong>${(currentPrice ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
         </Typography>
 
         {pendingTrades.map((trade, index) => (
